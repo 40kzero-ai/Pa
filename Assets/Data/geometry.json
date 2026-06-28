@@ -1,0 +1,31 @@
+{
+  "formatVersion": 1,
+  "grid": { "width": 8, "height": 6 },
+  "terrainTypes": [
+    { "id": "ocean",    "color": "3A6EA5" },
+    { "id": "plains",   "color": "8FB36B" },
+    { "id": "forest",   "color": "4E7A4A" },
+    { "id": "hills",    "color": "B0A06A" },
+    { "id": "mountain", "color": "8C7B6B" }
+  ],
+  "terrain": [
+    0, 0, 1, 1, 1, 1, 0, 0,
+    0, 1, 1, 2, 2, 1, 1, 0,
+    0, 1, 2, 2, 3, 2, 1, 0,
+    0, 1, 2, 3, 4, 3, 1, 0,
+    0, 1, 1, 2, 3, 2, 1, 0,
+    0, 0, 1, 1, 1, 1, 0, 0
+  ],
+  "elevation": [
+    0, 0, 1, 1, 1, 1, 0, 0,
+    0, 1, 1, 1, 1, 1, 1, 0,
+    0, 1, 1, 2, 2, 2, 1, 0,
+    0, 1, 2, 3, 3, 2, 1, 0,
+    0, 1, 1, 2, 2, 2, 1, 0,
+    0, 0, 1, 1, 1, 1, 0, 0
+  ],
+  "provinces": [
+    { "id": "p_north", "nameKey": "PROV_NORTH" },
+    { "id": "p_south", "nameKey": "PROV_SOUTH" }
+  ]
+}
