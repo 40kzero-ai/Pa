@@ -131,6 +131,7 @@ GameObject:
   - component: {fileID: 330585545}
   - component: {fileID: 330585544}
   - component: {fileID: 330585547}
+  - component: {fileID: 330585548}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
@@ -205,13 +206,13 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 330585543}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 1, z: -10}
+  m_LocalRotation: {x: 0.7071068, y: 0, z: 0, w: 0.7071068}
+  m_LocalPosition: {x: 0, y: 500, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_LocalEulerAnglesHint: {x: 90, y: 0, z: 0}
 --- !u!114 &330585547
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -256,6 +257,24 @@ MonoBehaviour:
     m_VarianceClampScale: 0.9
     m_ContrastAdaptiveSharpening: 0
   m_Version: 2
+--- !u!114 &330585548
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 330585543}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 815f39bade2530e4f9f10330f316fcdb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::HexCameraController
+  Cam: {fileID: 330585545}
+  Tilt: 75
+  ZoomStep: 0.08
+  DragPanSpeed: 0.0022
+  KeyPanSpeed: 0.7
+  EnableKeyPan: 1
 --- !u!1 &410087039
 GameObject:
   m_ObjectHideFlags: 0
@@ -383,7 +402,7 @@ MonoBehaviour:
   m_ShadowLayerMask: 1
   m_RenderingLayers: 1
   m_ShadowRenderingLayers: 1
---- !u!1 &806197034
+--- !u!1 &596827395
 GameObject:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -391,39 +410,58 @@ GameObject:
   m_PrefabAsset: {fileID: 0}
   serializedVersion: 6
   m_Component:
-  - component: {fileID: 806197036}
-  - component: {fileID: 806197035}
+  - component: {fileID: 596827398}
+  - component: {fileID: 596827397}
+  - component: {fileID: 596827396}
   m_Layer: 0
-  m_Name: GameObject
+  m_Name: HexGrid
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!114 &806197035
+--- !u!114 &596827396
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 806197034}
+  m_GameObject: {fileID: 596827395}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: fcde09f8c2aa5304a97111b9b0090148, type: 3}
+  m_Script: {fileID: 11500000, guid: c85dc4d9e2420f041a2ea2b746dd9f55, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::HexMapEditor
+  Grid: {fileID: 596827397}
+  UIScale: 1.8
+  HighlightMaterial: {fileID: 2100000, guid: 6f39f4fa2e3b20e45afea11f119fc7db, type: 2}
+  PreviewYOffset: 0.2
+--- !u!114 &596827397
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 596827395}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b6e1054608bc41041bad853b63c8a486, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::HexGrid
   GeometryJson: {fileID: 4900000, guid: 7e25be70fa4e11646a15776891ef3912, type: 3}
   TerrainMaterial: {fileID: 2100000, guid: 3ef3494e26614d54cb647dbe2c93ba42, type: 2}
---- !u!4 &806197036
+  CameraController: {fileID: 330585548}
+  AutoFrameCamera: 1
+--- !u!4 &596827398
 Transform:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 806197034}
+  m_GameObject: {fileID: 596827395}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -0, y: -0, z: -0}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -485,4 +523,4 @@ SceneRoots:
   - {fileID: 330585546}
   - {fileID: 410087041}
   - {fileID: 832575519}
-  - {fileID: 806197036}
+  - {fileID: 596827398}

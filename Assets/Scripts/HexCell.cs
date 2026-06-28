@@ -22,9 +22,12 @@ public class HexCell
     public int Z;                  // 행(row)
     public Vector3 Position;       // 월드 중심 좌표
     public int TerrainType;        // terrainTypes 인덱스
-    public int Elevation;          // 고도 (이 스켈레톤에선 데이터만 보관, 렌더링은 평면)
+    public int Elevation;          // 고도 (이 스켈레톤에선 데이터만 보관)
     public int ProvinceIndex = -1; // 소속 프로빈스 인덱스 (-1이면 없음)
     public Color Color = Color.gray;
+
+    // 이 셀이 속한 청크. 편집 후 이 청크만 다시 그리면 된다.
+    public HexChunk Chunk;
 
     readonly HexCell[] neighbors = new HexCell[6];
 
