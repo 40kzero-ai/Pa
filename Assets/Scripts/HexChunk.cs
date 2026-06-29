@@ -3,8 +3,16 @@ using UnityEngine;
 using UnityEngine.Rendering;
 
 /// <summary>
-/// 셀의 한 묶음(청크)을 받아 헥스 메시로 삼각형화한다.
-/// MeshCollider를 함께 두어, 마우스 레이캐스트로 클릭한 셀을 집어낼 수 있게 한다.
+/// 셀 묶음(청크)을 헥스 메시로 만든다.
+///
+/// 설계(텍스처 구동 + CPU 고도 + 병렬 콜라이더 베이크):
+///  - 색: 셰이더가 텍스처에서 읽음. 메시엔 셀별 uv만 실어 셀 경계가 칼같이 떨어진다.
+///  - 고도(y): CPU에서 정점 y에 직접 반영(셀 고도 × HeightScale). MeshCollider가 실제 지형을
+///    따라가 클릭 피킹이 고도와 무관하게 정확. (셰이더 _HeightScale은 0)
+///  - 콜라이더: 쿠킹이 가장 비싸므로, 지오메트리 생성(BuildGeometry)과 콜라이더 부착(AssignCollider)을
+///    분리한다. HexGrid가 모든 청크의 메시를 만든 뒤 Physics.BakeMesh를 병렬 잡으로 미리 구워두면,
+///    AssignCollider의 sharedMesh 대입이 싸진다(이미 구워진 메시를 붙이기만 함).
+///  - 색 페인팅에선 메시/콜라이더를 건드리지 않는다(텍스처 픽셀만 갱신).
 /// </summary>
 [RequireComponent(typeof(MeshFilter), typeof(MeshRenderer), typeof(MeshCollider))]
 public class HexChunk : MonoBehaviour
@@ -13,9 +21,8 @@ public class HexChunk : MonoBehaviour
 
     Mesh mesh;
     MeshCollider meshCollider;
-    readonly List<Vector3> vertices = new List<Vector3>();
-    readonly List<int> triangles = new List<int>();
-    readonly List<Color> colors = new List<Color>();
+    int gridWidth = 1, gridHeight = 1;
+    float heightScale = 0f;
 
     void Awake()
     {
@@ -26,56 +33,67 @@ public class HexChunk : MonoBehaviour
 
     public void AddCell(HexCell cell) => cells.Add(cell);
 
-    /// <summary>이 청크가 가진 모든 셀을 메시로 다시 만든다.</summary>
-    public void Triangulate()
+    public void SetGridSize(int width, int height)
     {
-        vertices.Clear();
-        triangles.Clear();
-        colors.Clear();
+        gridWidth = Mathf.Max(1, width);
+        gridHeight = Mathf.Max(1, height);
+    }
 
-        for (int i = 0; i < cells.Count; i++)
-            TriangulateCell(cells[i]);
+    public void SetHeightScale(float scale) => heightScale = scale;
+
+    /// <summary>병렬 베이크용 메시 instanceID.</summary>
+    public int MeshInstanceID => mesh.GetInstanceID();
+
+    /// <summary>
+    /// 청크 메시(정점/uv/삼각형)를 만든다. 콜라이더는 여기서 부착하지 않는다(병렬 베이크 후 AssignCollider).
+    /// 셀당 정점 7개(중심 1 + 코너 6) 팬. 모든 정점이 같은 uv·같은 y → 색 칼 경계, 셀마다 평평한 단.
+    /// </summary>
+    public void BuildGeometry()
+    {
+        int n = cells.Count;
+        var vertices  = new List<Vector3>(n * 7);
+        var uvs       = new List<Vector2>(n * 7);
+        var triangles = new List<int>(n * 18);
+
+        float invW = 1f / gridWidth;
+        float invH = 1f / gridHeight;
+
+        for (int i = 0; i < n; i++)
+        {
+            HexCell cell = cells[i];
+            Vector3 c = cell.Position;
+            c.y = cell.Elevation * heightScale;
+
+            Vector2 uv = new Vector2((cell.X + 0.5f) * invW, (cell.Z + 0.5f) * invH);
+
+            int b = vertices.Count;
+            vertices.Add(c); uvs.Add(uv);
+            for (int d = 0; d < 6; d++)
+            {
+                Vector3 corner = c + HexMetrics.Corners[d];
+                corner.y = c.y;
+                vertices.Add(corner);
+                uvs.Add(uv);
+            }
+            for (int d = 0; d < 6; d++)
+            {
+                triangles.Add(b);
+                triangles.Add(b + 1 + d);
+                triangles.Add(b + 1 + (d + 1) % 6);
+            }
+        }
 
         mesh.Clear();
         mesh.SetVertices(vertices);
+        mesh.SetUVs(0, uvs);
         mesh.SetTriangles(triangles, 0);
-        mesh.SetColors(colors);
-        mesh.RecalculateNormals();
         mesh.RecalculateBounds();
+    }
 
-        // 콜라이더 갱신(다시 그릴 때마다 클릭 판정도 최신 메시를 따르게)
+    /// <summary>이미 BakeMesh로 구워진 메시를 콜라이더에 붙인다(대입 비용이 작음).</summary>
+    public void AssignCollider()
+    {
         meshCollider.sharedMesh = null;
         meshCollider.sharedMesh = mesh;
-    }
-
-    void TriangulateCell(HexCell cell)
-    {
-        Vector3 center = cell.Position;
-        for (int d = 0; d < 6; d++)
-        {
-            AddTriangle(
-                center,
-                center + HexMetrics.Corners[d],
-                center + HexMetrics.Corners[d + 1]);
-            AddTriangleColor(cell.Color);
-        }
-    }
-
-    void AddTriangle(Vector3 v1, Vector3 v2, Vector3 v3)
-    {
-        int index = vertices.Count;
-        vertices.Add(v1);
-        vertices.Add(v2);
-        vertices.Add(v3);
-        triangles.Add(index);
-        triangles.Add(index + 1);
-        triangles.Add(index + 2);
-    }
-
-    void AddTriangleColor(Color c)
-    {
-        colors.Add(c);
-        colors.Add(c);
-        colors.Add(c);
     }
 }

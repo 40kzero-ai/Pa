@@ -10,6 +10,10 @@ using UnityEngine.InputSystem; // 새 Input System
 /// - 마우스를 올리면 브러시가 칠할 영역을 반투명으로 미리보기
 /// - 좌측 패널: 지형 견본, 브러시 크기, UI 크기(±), 새 맵 생성(W×H), 저장
 /// (카메라 줌/이동은 HexCameraController가 담당: 휠 줌, 우드래그 팬)
+///
+/// 클릭 지점은 청크 MeshCollider에 대한 Physics.Raycast로 구한다. 콜라이더는 고도가 반영된
+/// 실제 지형 메시를 따라가므로 heightmap을 써도 피킹이 정확하다. (콜라이더는 맵/고도 변경 시에만
+/// 재생성되고, 색 페인팅은 텍스처 픽셀만 갱신하므로 콜라이더 재쿠킹이 일어나지 않는다.)
 /// </summary>
 public class HexMapEditor : MonoBehaviour
 {
@@ -165,16 +169,27 @@ public class HexMapEditor : MonoBehaviour
             && guiY <= PanelTop + PanelHeight * UIScale;
     }
 
+    /// <summary>화면 좌표에서 청크 MeshCollider로 레이캐스트해 월드 지점을 구한다. 실패 시 false.
+    /// 콜라이더가 실제 지형(고도 포함)을 따라가므로 heightmap을 써도 피킹이 정확하다.</summary>
+    bool TryGetGroundPoint(Vector2 screenPos, out Vector3 point)
+    {
+        point = default;
+        Camera cam = Camera.main;
+        if (cam == null) return false;
+
+        Ray ray = cam.ScreenPointToRay(screenPos);
+        if (!Physics.Raycast(ray, out RaycastHit hit)) return false;
+
+        point = hit.point;
+        return true;
+    }
+
     void TryPaint(Vector2 screenPos)
     {
         if (IsPointerOverPanel(screenPos)) return; // 패널 위 클릭만 무시(그 아래 빈 공간은 칠 가능)
 
-        Camera cam = Camera.main;
-        if (cam == null) return;
-
-        Ray ray = cam.ScreenPointToRay(screenPos);
-        if (Physics.Raycast(ray, out RaycastHit hit))
-            Grid.PaintAt(hit.point, activeTerrain, brushSize);
+        if (TryGetGroundPoint(screenPos, out Vector3 point))
+            Grid.PaintAt(point, activeTerrain, brushSize);
     }
 
     void TryEdgePanWhilePainting(Vector2 screenPos)
@@ -205,13 +220,9 @@ public class HexMapEditor : MonoBehaviour
         Vector2 screenPos = mouse.position.ReadValue();
         if (IsPointerOverPanel(screenPos)) { HidePreview(); return; }
 
-        Camera cam = Camera.main;
-        if (cam == null) { HidePreview(); return; }
+        if (!TryGetGroundPoint(screenPos, out Vector3 point)) { HidePreview(); return; }
 
-        Ray ray = cam.ScreenPointToRay(screenPos);
-        if (!Physics.Raycast(ray, out RaycastHit hit)) { HidePreview(); return; }
-
-        HexCell center = Grid.GetCell(hit.point);
+        HexCell center = Grid.GetCell(point);
         if (center == null) { HidePreview(); return; }
 
         if (center == lastCenter && brushSize == lastBrush)
@@ -222,7 +233,7 @@ public class HexMapEditor : MonoBehaviour
         lastCenter = center;
         lastBrush = brushSize;
 
-        BuildPreview(Grid.GetBrushCells(hit.point, brushSize));
+        BuildPreview(Grid.GetBrushCells(point, brushSize));
         previewGO.SetActive(true);
     }
 

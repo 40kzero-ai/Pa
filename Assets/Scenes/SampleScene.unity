@@ -206,13 +206,13 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 330585543}
   serializedVersion: 2
-  m_LocalRotation: {x: 0.60876137, y: 0, z: 0, w: 0.7933534}
+  m_LocalRotation: {x: 0.7071068, y: 0, z: 0, w: 0.7071068}
   m_LocalPosition: {x: 0, y: 500, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 75, y: 0, z: 0}
+  m_LocalEulerAnglesHint: {x: 90, y: 0, z: 0}
 --- !u!114 &330585547
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -271,7 +271,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::HexCameraController
   Cam: {fileID: 330585545}
   Tilt: 75
-  ZoomStep: 0.08
+  ZoomSensitivity: 0.5
+  ZoomSmoothTime: 0.1
   DragPanSpeed: 0.0022
   KeyPanSpeed: 0.7
   EnableKeyPan: 1
@@ -455,11 +456,13 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::HexGrid
   GeometryJson: {fileID: 4900000, guid: 3235a8baef1446c45aabcb2157b66e1c, type: 3}
-  TerrainMaterial: {fileID: 2100000, guid: 3ef3494e26614d54cb647dbe2c93ba42, type: 2}
+  TerrainMaterial: {fileID: 2100000, guid: 1c1c4b88da3317d44869d8c0f65ac8c2, type: 2}
   CameraController: {fileID: 330585548}
   AutoFrameCamera: 1
+  HeightScale: 0
   ChunkSizeX: 32
   ChunkSizeZ: 32
+  ChunksPerFrame: 64
 --- !u!4 &596827398
 Transform:
   m_ObjectHideFlags: 0

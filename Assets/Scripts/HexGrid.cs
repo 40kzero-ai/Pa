@@ -1,106 +1,174 @@
+using System.Collections;
 using System.Collections.Generic;
+using Unity.Collections;
+using Unity.Jobs;
 using UnityEngine;
 
 /// <summary>
-/// geometry.json을 읽어 논리 셀 격자를 만들고, 청크로 나눠 메시를 생성하는 진입점.
-/// 에디터 확장: 브러시 페인트(PaintAt), 저장(SaveToFile), 임의 크기 새 맵(CreateBlankMap).
-/// 카메라 컨트롤러가 있으면 맵 (재)생성 시 자동으로 맞춰준다.
+/// geometry.json을 읽어 논리 셀 격자를 만들고, 청크 메시를 생성한 뒤
+/// "지형 인덱스/팔레트 텍스처"로 화면을 그리는 진입점.
+///
+/// 핵심 설계:
+///  - 색: 셰이더가 _TerrainTex(셀별 인덱스)+_PaletteTex(인덱스→색)에서 point 샘플 → 칼 같은 셀 경계.
+///  - 고도(y): CPU 메시 정점에 직접 반영(HeightScale). MeshCollider가 실제 지형을 따라가 피킹 정확.
+///  - 페인팅: 메시 재생성이 아니라 텍스처 픽셀 쓰기 → 즉시 반영.
+///  - 빌드: 코루틴으로 프레임 분산(로그가 순차로 뜨고 화면이 안 멈춤) + 콜라이더는 Physics.BakeMesh
+///    병렬 잡으로 미리 구워 부착 비용을 줄인다.
 /// </summary>
 public class HexGrid : MonoBehaviour
 {
     [Header("입력")]
-    [Tooltip("geometry.json을 .json 파일로 Assets에 넣고 여기에 드래그(TextAsset).")]
     public TextAsset GeometryJson;
 
-    [Tooltip("정점 컬러를 읽는 머티리얼. 동봉한 VertexColorUnlit 셰이더로 만든 머티리얼.")]
+    [Tooltip("HexTerrainTextured 셰이더로 만든 머티리얼.")]
     public Material TerrainMaterial;
 
-    [Tooltip("비워두면 씬에서 자동으로 찾는다. 없으면 Camera.main을 직접 이동.")]
+    [Tooltip("비워두면 씬에서 자동으로 찾는다.")]
     public HexCameraController CameraController;
 
-    [Tooltip("카메라 컨트롤러가 없을 때만 쓰는 단순 자동 프레이밍.")]
     public bool AutoFrameCamera = true;
 
+    [Header("고도(y축)")]
+    [Tooltip("정점 y = 셀 고도 × 이 값. y축을 쓰기 전엔 0(평평).")]
+    public float HeightScale = 0f;
+
     [Header("청크 설정")]
-    [Tooltip("청크 하나가 가로로 담는 셀 수. 큰 맵일수록 5보다 크게 잡아 GameObject/Collider 수를 줄이세요.")]
-    [Min(1)] public int ChunkSizeX = 32;
-    [Tooltip("청크 하나가 세로로 담는 셀 수. 큰 맵일수록 5보다 크게 잡아 GameObject/Collider 수를 줄이세요.")]
-    [Min(1)] public int ChunkSizeZ = 32;
+    [Tooltip("청크 가로 셀 수. 1000x1000이면 64~128 권장(청크/콜라이더 수 ↓).")]
+    [Min(1)] public int ChunkSizeX = 64;
+    [Tooltip("청크 세로 셀 수.")]
+    [Min(1)] public int ChunkSizeZ = 64;
+
+    [Header("빌드")]
+    [Tooltip("한 프레임에 지오메트리를 만들 청크 수. 작을수록 부드럽지만 총 시간이 약간 늘어남.")]
+    [Min(1)] public int ChunksPerFrame = 64;
 
     GeometryData data;
     HexCell[] cells;
     HexChunk[] chunks;
     int chunkCountX, chunkCountZ;
+    bool building;
+    Coroutine buildCo;
+
+    Material terrainMatInstance;
+    Texture2D terrainTex;   // RFloat: 셀별 지형 인덱스(색 전용)
+    Texture2D paletteTex;   // RGBA32: 인덱스→색
 
     public TerrainType[] TerrainTypes => data != null ? data.terrainTypes : null;
     public int CurrentWidth => data != null ? data.grid.width : 0;
     public int CurrentHeight => data != null ? data.grid.height : 0;
+    public bool IsBuilding => building;
 
-    // ── 되돌리기(Undo)/다시(Redo): 한 번의 드래그(붓질)를 한 단계로 묶는다 ──
+    // ── 되돌리기 ──
     struct CellChange { public HexCell Cell; public int OldTerrain; public int NewTerrain; }
     class EditEntry { public readonly List<CellChange> Changes = new List<CellChange>(); }
-
     readonly Stack<EditEntry> undoStack = new Stack<EditEntry>();
     readonly Stack<EditEntry> redoStack = new Stack<EditEntry>();
-    Dictionary<HexCell, int> strokeStart; // 이번 붓질에서 처음 바뀐 셀의 "이전 지형"
+    Dictionary<HexCell, int> strokeStart;
     bool recording;
-
     public bool CanUndo => undoStack.Count > 0;
     public bool CanRedo => redoStack.Count > 0;
 
     void Start()
     {
         ClampChunkSizes();
-
         if (CameraController == null)
             CameraController = FindFirstObjectByType<HexCameraController>();
 
-        if (GeometryJson == null)
-        {
-            Debug.LogError("HexGrid: GeometryJson이 비어 있습니다.");
-            return;
-        }
+        if (GeometryJson == null) { Debug.LogError("HexGrid: GeometryJson이 비어 있습니다."); return; }
         Build(HexGeometryLoader.Load(GeometryJson.text));
     }
 
-    void OnValidate()
-    {
-        ClampChunkSizes();
-    }
+    void OnValidate() => ClampChunkSizes();
 
     void ClampChunkSizes()
     {
         ChunkSizeX = Mathf.Max(1, ChunkSizeX);
         ChunkSizeZ = Mathf.Max(1, ChunkSizeZ);
+        ChunksPerFrame = Mathf.Max(1, ChunksPerFrame);
     }
 
-    // ───────────────────────── 빌드 / 새 맵 ─────────────────────────
+    // ───────────────────────── 빌드 ─────────────────────────
 
     public void Build(GeometryData newData)
     {
+        if (buildCo != null) StopCoroutine(buildCo);
+        buildCo = StartCoroutine(BuildRoutine(newData));
+    }
+
+    IEnumerator BuildRoutine(GeometryData newData)
+    {
+        building = true;
         ClampChunkSizes();
         data = newData;
-        Debug.Log($"맵 빌드: {data.grid.width}x{data.grid.height} / " +
-                  $"지형 {data.terrainTypes?.Length ?? 0}종 / " +
-                  $"프로빈스 {data.provinces?.Length ?? 0}개");
 
-        // 새 맵은 이전 셀 참조가 무효가 되므로 되돌리기 기록을 비운다.
-        undoStack.Clear();
-        redoStack.Clear();
-        recording = false;
-        strokeStart?.Clear();
+        var total = System.Diagnostics.Stopwatch.StartNew();
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        void Mark(string name)
+        {
+            sw.Stop();
+            Debug.Log($"[HexGrid] {name}: {sw.Elapsed.TotalMilliseconds:F1} ms");
+            sw.Restart();
+        }
+
+        Debug.Log($"맵 빌드 시작: {data.grid.width}x{data.grid.height} / 지형 {data.terrainTypes?.Length ?? 0}종");
+
+        undoStack.Clear(); redoStack.Clear(); recording = false; strokeStart?.Clear();
 
         if (chunks != null)
             for (int i = 0; i < chunks.Length; i++)
                 if (chunks[i] != null) Destroy(chunks[i].gameObject);
+        Mark("이전 청크 제거"); yield return null;
 
-        CreateChunks();
-        CreateCells();
+        BuildPalette();      Mark("팔레트 텍스처");        yield return null;
+        CreateChunks();      Mark("청크 GameObject 생성"); yield return null;
+        CreateCells();       Mark("논리 셀 생성");          yield return null;
+        BuildDataTextures(); Mark("지형 텍스처 업로드");    yield return null;
+        SetupMaterial();     Mark("머티리얼 셋업");         yield return null;
 
+        // 지오메트리: 프레임당 ChunksPerFrame개씩 (화면 안 멈추고 로그도 순차)
+        int w = data.grid.width, h = data.grid.height;
         for (int i = 0; i < chunks.Length; i++)
-            chunks[i].Triangulate();
+        {
+            chunks[i].SetGridSize(w, h);
+            chunks[i].SetHeightScale(HeightScale);
+            chunks[i].BuildGeometry();
+            if ((i + 1) % ChunksPerFrame == 0) yield return null;
+        }
+        Mark($"메시 지오메트리 ({chunks.Length}개 청크)"); yield return null;
 
-        FrameCamera();
+        // 콜라이더: 병렬 베이크 후 부착 (쿠킹을 코어 수만큼 분산)
+        BakeCollidersParallel();
+        for (int i = 0; i < chunks.Length; i++)
+        {
+            chunks[i].AssignCollider();
+            if ((i + 1) % ChunksPerFrame == 0) yield return null;
+        }
+        Mark("콜라이더 베이크/부착"); yield return null;
+
+        FrameCamera(); Mark("카메라 프레이밍");
+
+        total.Stop();
+        Debug.Log($"[HexGrid] ▶ 총 빌드: {total.Elapsed.TotalMilliseconds:F1} ms  ({w}x{h}, 셀 {w * h:N0}개)");
+        building = false;
+        buildCo = null;
+    }
+
+    // 모든 청크 메시의 콜라이더를 병렬로 미리 굽는다. 이후 AssignCollider 대입이 싸진다.
+    struct BakeColliderJob : IJobParallelFor
+    {
+        [ReadOnly] public NativeArray<int> MeshIds;
+        public void Execute(int i) => Physics.BakeMesh(MeshIds[i], false);
+    }
+
+    void BakeCollidersParallel()
+    {
+        if (chunks == null || chunks.Length == 0) return;
+        var ids = new NativeArray<int>(chunks.Length, Allocator.TempJob);
+        for (int i = 0; i < chunks.Length; i++) ids[i] = chunks[i].MeshInstanceID;
+
+        var job = new BakeColliderJob { MeshIds = ids };
+        job.Schedule(ids.Length, 4).Complete();   // 4 = 배치 크기
+        ids.Dispose();
     }
 
     public void CreateBlankMap(int width, int height) => CreateBlankMap(width, height, 200, 200);
@@ -115,14 +183,12 @@ public class HexGrid : MonoBehaviour
             formatVersion = 1,
             grid = new GridInfo { width = width, height = height },
             terrainTypes = (data?.terrainTypes != null && data.terrainTypes.Length > 0)
-                ? data.terrainTypes
-                : DefaultTerrainTypes(),
+                ? data.terrainTypes : DefaultTerrainTypes(),
             terrain = new int[width * height],
             elevation = null,
             provinces = data?.provinces,
             provinceMap = null
         };
-
         Build(blank);
     }
 
@@ -139,48 +205,38 @@ public class HexGrid : MonoBehaviour
 
     public HexCell GetCell(Vector3 worldPosition)
     {
+        if (cells == null || data == null) return null;
         Vector3 local = transform.InverseTransformPoint(worldPosition);
         HexCoordinates c = HexCoordinates.FromPosition(local);
 
         int offsetX = c.X + c.Z / 2;
         if (c.Z < 0 || c.Z >= data.grid.height || offsetX < 0 || offsetX >= data.grid.width)
             return null;
-
         return cells[offsetX + c.Z * data.grid.width];
     }
 
-    /// <summary>월드 좌표 위치를 중심으로 brushRadius 범위의 셀을 칠한다. (브러시 페인트)</summary>
     public void PaintAt(Vector3 worldPosition, int terrainType, int brushRadius)
     {
+        if (building || terrainTex == null) return;
         HexCell center = GetCell(worldPosition);
         if (center == null) return;
 
-        // 영향받은 청크를 모아 청크당 한 번만 다시 그린다(중복 갱신 방지).
-        var dirtyChunks = new HashSet<HexChunk>();
+        bool changed = false;
         foreach (HexCell cell in GetCellsInRange(center, brushRadius))
         {
             if (cell.TerrainType == terrainType) continue;
-
-            // 되돌리기용: 이번 붓질에서 이 셀이 처음 바뀌면 "이전 지형"을 기록
-            if (recording && !strokeStart.ContainsKey(cell))
-                strokeStart[cell] = cell.TerrainType;
+            if (recording && !strokeStart.ContainsKey(cell)) strokeStart[cell] = cell.TerrainType;
 
             cell.TerrainType = terrainType;
-            cell.Color = ResolveColor(terrainType);
             data.terrain[cell.Z * data.grid.width + cell.X] = terrainType;
-            dirtyChunks.Add(cell.Chunk);
+            WriteTerrainPixel(cell.X, cell.Z, terrainType);
+            changed = true;
         }
-
-        foreach (HexChunk ch in dirtyChunks)
-            ch.Triangulate();
+        if (changed) terrainTex.Apply(false);   // 청크 재생성 0회, 텍스처 업로드 1회
     }
 
-    // 단일 셀 편집(호환용)
     public void EditCellAt(Vector3 worldPosition, int terrainType) => PaintAt(worldPosition, terrainType, 0);
 
-    // ── 붓질 단위 기록 ──
-
-    /// <summary>드래그 시작 시 호출. 이 시점부터 바뀌는 셀을 한 묶음으로 기록한다.</summary>
     public void BeginStroke()
     {
         recording = true;
@@ -188,7 +244,6 @@ public class HexGrid : MonoBehaviour
         strokeStart.Clear();
     }
 
-    /// <summary>드래그 끝에 호출. 바뀐 게 있으면 되돌리기 한 단계로 쌓는다.</summary>
     public void EndStroke()
     {
         recording = false;
@@ -197,16 +252,14 @@ public class HexGrid : MonoBehaviour
         var entry = new EditEntry();
         foreach (var kv in strokeStart)
         {
-            int oldT = kv.Value;
-            int newT = kv.Key.TerrainType;
+            int oldT = kv.Value, newT = kv.Key.TerrainType;
             if (oldT != newT)
                 entry.Changes.Add(new CellChange { Cell = kv.Key, OldTerrain = oldT, NewTerrain = newT });
         }
         strokeStart.Clear();
-
         if (entry.Changes.Count == 0) return;
         undoStack.Push(entry);
-        redoStack.Clear(); // 새 편집이 생기면 다시 실행 기록은 무효
+        redoStack.Clear();
     }
 
     public void Undo()
@@ -227,20 +280,16 @@ public class HexGrid : MonoBehaviour
 
     void ApplyEntry(EditEntry entry, bool undo)
     {
-        var dirty = new HashSet<HexChunk>();
         foreach (CellChange ch in entry.Changes)
         {
             int t = undo ? ch.OldTerrain : ch.NewTerrain;
             ch.Cell.TerrainType = t;
-            ch.Cell.Color = ResolveColor(t);
             data.terrain[ch.Cell.Z * data.grid.width + ch.Cell.X] = t;
-            dirty.Add(ch.Cell.Chunk);
+            WriteTerrainPixel(ch.Cell.X, ch.Cell.Z, t);
         }
-        foreach (HexChunk c in dirty)
-            c.Triangulate();
+        terrainTex.Apply(false);
     }
 
-    /// <summary>브러시 미리보기용: 위치 중심 반경 안의 셀 목록(맵 밖이면 빈 목록).</summary>
     public List<HexCell> GetBrushCells(Vector3 worldPosition, int brushRadius)
     {
         HexCell center = GetCell(worldPosition);
@@ -248,7 +297,7 @@ public class HexGrid : MonoBehaviour
         return GetCellsInRange(center, brushRadius);
     }
 
-    // 이웃 탐색(BFS)으로 반경 range 안의 셀(헥스 원판)을 모은다.
+    // 좌표 기반 이웃 탐색(셀이 이웃 배열을 들지 않으므로 여기서 계산)
     List<HexCell> GetCellsInRange(HexCell center, int range)
     {
         var result = new List<HexCell> { center };
@@ -256,23 +305,36 @@ public class HexGrid : MonoBehaviour
 
         var visited = new HashSet<HexCell> { center };
         var frontier = new List<HexCell> { center };
-
         for (int step = 0; step < range; step++)
         {
             var next = new List<HexCell>();
             foreach (HexCell c in frontier)
                 for (int d = 0; d < 6; d++)
                 {
-                    HexCell n = c.GetNeighbor((HexDirection)d);
-                    if (n != null && visited.Add(n))
-                    {
-                        next.Add(n);
-                        result.Add(n);
-                    }
+                    HexCell n = NeighborOf(c, (HexDirection)d);
+                    if (n != null && visited.Add(n)) { next.Add(n); result.Add(n); }
                 }
             frontier = next;
         }
         return result;
+    }
+
+    HexCell NeighborOf(HexCell c, HexDirection d)
+    {
+        int x = c.X, z = c.Z, nx = x, nz = z;
+        bool even = (z & 1) == 0;
+        switch (d)
+        {
+            case HexDirection.E:  nx = x + 1; break;
+            case HexDirection.W:  nx = x - 1; break;
+            case HexDirection.NE: nx = even ? x     : x + 1; nz = z + 1; break;
+            case HexDirection.NW: nx = even ? x - 1 : x;     nz = z + 1; break;
+            case HexDirection.SE: nx = even ? x     : x + 1; nz = z - 1; break;
+            case HexDirection.SW: nx = even ? x - 1 : x;     nz = z - 1; break;
+        }
+        int w = data.grid.width, h = data.grid.height;
+        if (nx < 0 || nx >= w || nz < 0 || nz >= h) return null;
+        return cells[nx + nz * w];
     }
 
     public void SaveToFile(string path)
@@ -282,25 +344,80 @@ public class HexGrid : MonoBehaviour
         Debug.Log($"맵 저장 완료: {path}");
     }
 
-    /// <summary>저장한 geometry.json을 다시 읽어 맵을 재구성한다. 성공하면 true.</summary>
     public bool LoadFromFile(string path)
     {
-        if (!System.IO.File.Exists(path))
+        if (!System.IO.File.Exists(path)) { Debug.LogWarning($"불러올 파일이 없습니다: {path}"); return false; }
+        try { Build(HexGeometryLoader.LoadFromFile(path)); Debug.Log($"맵 불러옴: {path}"); return true; }
+        catch (System.Exception e) { Debug.LogError($"맵 불러오기 실패: {e.Message}"); return false; }
+    }
+
+    // ───────────────────────── 텍스처/머티리얼 ─────────────────────────
+
+    void BuildPalette()
+    {
+        TerrainType[] types = (data.terrainTypes != null && data.terrainTypes.Length > 0)
+            ? data.terrainTypes : DefaultTerrainTypes();
+        int n = Mathf.Max(1, types.Length);
+
+        if (paletteTex == null || paletteTex.width != n)
         {
-            Debug.LogWarning($"불러올 파일이 없습니다: {path}");
-            return false;
+            if (paletteTex != null) Destroy(paletteTex);
+            paletteTex = new Texture2D(n, 1, TextureFormat.RGBA32, false, false)
+            { name = "HexPalette", filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp };
         }
-        try
+        var px = new Color[n];
+        for (int i = 0; i < n; i++) px[i] = HexColor(types, i);
+        paletteTex.SetPixels(px); paletteTex.Apply(false);
+    }
+
+    void BuildDataTextures()
+    {
+        int w = data.grid.width, h = data.grid.height, len = w * h;
+        if (terrainTex == null || terrainTex.width != w || terrainTex.height != h)
         {
-            Build(HexGeometryLoader.LoadFromFile(path)); // Build이 되돌리기 기록도 비운다
-            Debug.Log($"맵 불러옴: {path}");
-            return true;
+            if (terrainTex != null) Destroy(terrainTex);
+            terrainTex = new Texture2D(w, h, TextureFormat.RFloat, false, true)
+            { name = "HexTerrainIndex", filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp };
         }
-        catch (System.Exception e)
+        var tPix = new Color[len];
+        for (int i = 0; i < len; i++) tPix[i].r = data.terrain[i];
+        terrainTex.SetPixels(tPix); terrainTex.Apply(false);
+    }
+
+    void SetupMaterial()
+    {
+        if (TerrainMaterial == null)
         {
-            Debug.LogError($"맵 불러오기 실패: {e.Message}");
-            return false;
+            Debug.LogError("HexGrid: TerrainMaterial이 비어 있습니다. HexTerrainTextured 머티리얼을 연결하세요.");
+            return;
         }
+        if (terrainMatInstance == null) terrainMatInstance = new Material(TerrainMaterial);
+
+        terrainMatInstance.SetTexture("_TerrainTex", terrainTex);
+        terrainMatInstance.SetTexture("_PaletteTex", paletteTex);
+        terrainMatInstance.SetFloat("_PaletteWidth", paletteTex.width);
+        terrainMatInstance.SetFloat("_HeightScale", 0f); // 고도는 CPU가 담당 → 셰이더 변위 off
+
+        for (int i = 0; i < chunks.Length; i++)
+            chunks[i].GetComponent<MeshRenderer>().sharedMaterial = terrainMatInstance;
+    }
+
+    void WriteTerrainPixel(int x, int z, int terrainType)
+        => terrainTex.SetPixel(x, z, new Color(terrainType, 0f, 0f, 0f));
+
+    /// <summary>고도(cell.Elevation)를 바꾼 뒤 호출. 메시+콜라이더를 다시 만들어 화면·피킹에 반영.</summary>
+    public void RebuildElevation()
+    {
+        if (chunks == null) return;
+        int w = data.grid.width, h = data.grid.height;
+        for (int i = 0; i < chunks.Length; i++)
+        {
+            chunks[i].SetGridSize(w, h);
+            chunks[i].SetHeightScale(HeightScale);
+            chunks[i].BuildGeometry();
+        }
+        BakeCollidersParallel();
+        for (int i = 0; i < chunks.Length; i++) chunks[i].AssignCollider();
     }
 
     // ───────────────────────── 생성 내부 ─────────────────────────
@@ -316,8 +433,7 @@ public class HexGrid : MonoBehaviour
             {
                 var go = new GameObject($"Chunk {x}_{z}");
                 go.transform.SetParent(transform, false);
-                var renderer = go.AddComponent<MeshRenderer>();
-                renderer.sharedMaterial = TerrainMaterial;
+                go.AddComponent<MeshRenderer>();
                 go.AddComponent<MeshFilter>();
                 chunks[i] = go.AddComponent<HexChunk>();
             }
@@ -325,91 +441,70 @@ public class HexGrid : MonoBehaviour
 
     void CreateCells()
     {
-        int w = data.grid.width;
-        int h = data.grid.height;
+        int w = data.grid.width, h = data.grid.height;
         cells = new HexCell[w * h];
+        bool hasElev = data.elevation != null && data.elevation.Length == cells.Length;
+        bool hasProv = data.provinceMap != null && data.provinceMap.Length == cells.Length;
 
         for (int z = 0, i = 0; z < h; z++)
             for (int x = 0; x < w; x++, i++)
-                cells[i] = CreateCell(x, z, i);
+            {
+                var cell = new HexCell
+                {
+                    X = x, Z = z,
+                    Position = CellPosition(x, z),
+                    TerrainType = data.terrain[i],
+                    Elevation = hasElev ? data.elevation[i] : 0,
+                    ProvinceIndex = hasProv ? data.provinceMap[i] : -1,
+                };
+                cells[i] = cell;
+                AddCellToChunk(x, z, cell);
+            }
     }
 
-    HexCell CreateCell(int x, int z, int i)
+    static Vector3 CellPosition(int x, int z)
     {
-        var cell = new HexCell { X = x, Z = z };
-
-        Vector3 position;
-        position.x = (x + z * 0.5f - z / 2) * (HexMetrics.InnerRadius * 2f);
-        position.y = 0f;
-        position.z = z * (HexMetrics.OuterRadius * 1.5f);
-        cell.Position = position;
-
-        cell.TerrainType = data.terrain[i];
-        cell.Elevation = (data.elevation != null && data.elevation.Length == cells.Length)
-            ? data.elevation[i] : 0;
-        cell.ProvinceIndex = (data.provinceMap != null && data.provinceMap.Length == cells.Length)
-            ? data.provinceMap[i] : -1;
-        cell.Color = ResolveColor(cell.TerrainType);
-
-        int w = data.grid.width;
-        if (x > 0)
-            cell.SetNeighbor(HexDirection.W, cells[i - 1]);
-        if (z > 0)
-        {
-            if ((z & 1) == 0)
-            {
-                cell.SetNeighbor(HexDirection.SE, cells[i - w]);
-                if (x > 0) cell.SetNeighbor(HexDirection.SW, cells[i - w - 1]);
-            }
-            else
-            {
-                cell.SetNeighbor(HexDirection.SW, cells[i - w]);
-                if (x < w - 1) cell.SetNeighbor(HexDirection.SE, cells[i - w + 1]);
-            }
-        }
-
-        AddCellToChunk(x, z, cell);
-        return cell;
+        return new Vector3(
+            (x + z * 0.5f - z / 2) * (HexMetrics.InnerRadius * 2f),
+            0f,
+            z * (HexMetrics.OuterRadius * 1.5f));
     }
 
-    Color ResolveColor(int terrainType)
+    static Color HexColor(TerrainType[] types, int terrainType)
     {
-        if (data.terrainTypes == null || terrainType < 0 || terrainType >= data.terrainTypes.Length)
-            return Color.gray;
-
-        string hex = data.terrainTypes[terrainType].color;
+        if (types == null || terrainType < 0 || terrainType >= types.Length) return Color.gray;
+        string hex = types[terrainType].color;
+        if (string.IsNullOrEmpty(hex)) return Color.gray;
         if (!hex.StartsWith("#")) hex = "#" + hex;
         return ColorUtility.TryParseHtmlString(hex, out var c) ? c : Color.magenta;
     }
 
     void AddCellToChunk(int x, int z, HexCell cell)
     {
-        int cx = x / ChunkSizeX;
-        int cz = z / ChunkSizeZ;
-        HexChunk chunk = chunks[cx + cz * chunkCountX];
+        HexChunk chunk = chunks[(x / ChunkSizeX) + (z / ChunkSizeZ) * chunkCountX];
         chunk.AddCell(cell);
         cell.Chunk = chunk;
     }
 
+    // 100만 셀 순회 없이 격자 네 모서리만으로 경계를 계산.
     void FrameCamera()
     {
-        if (cells == null || cells.Length == 0) return;
+        if (data == null) return;
+        int w = data.grid.width, h = data.grid.height;
 
-        Vector3 min = cells[0].Position, max = cells[0].Position;
-        for (int i = 1; i < cells.Length; i++)
+        Vector3 min = CellPosition(0, 0), max = min;
+        foreach (var p in new[] { CellPosition(w - 1, 0), CellPosition(0, h - 1), CellPosition(w - 1, h - 1) })
         {
-            min = Vector3.Min(min, cells[i].Position);
-            max = Vector3.Max(max, cells[i].Position);
+            min = Vector3.Min(min, p);
+            max = Vector3.Max(max, p);
         }
+        float pad = HexMetrics.OuterRadius;
+        min -= new Vector3(pad, 0, pad); max += new Vector3(pad, 0, pad);
+
         Vector3 center = (min + max) * 0.5f;
         float extent = Mathf.Max(max.x - min.x, max.z - min.z);
 
-        // 컨트롤러가 있으면 위임(줌/팬과 일관). 없으면 단순 자동 프레이밍.
-        if (CameraController != null)
-        {
-            CameraController.FrameMap(center, extent);
-            return;
-        }
+        if (CameraController != null) { CameraController.FrameMap(center, extent); return; }
         if (!AutoFrameCamera) return;
 
         Camera cam = Camera.main;

@@ -3,31 +3,44 @@ using UnityEngine.InputSystem; // 새 Input System
 
 /// <summary>
 /// 맵을 내려다보는 카메라 컨트롤러.
-/// - 마우스 휠: 줌 인/아웃
-/// - 우클릭 드래그: 평면 이동(팬)   · WASD/화살표: 보조 이동
-/// - 맵이 커지면 줌 최대 거리와 far clip이 함께 커져, 큰 맵도 한눈에 들어온다.
+/// - 마우스 휠: 줌 인/아웃 (휠 양 반영 + 지수 보간 + 부드러운 감속)
+/// - 우클릭 드래그: 평면 이동(팬) · WASD/화살표: 보조 이동
 ///
-/// 사용: 카메라(또는 아무 GameObject)에 붙이고, Cam을 비워두면 Camera.main을 사용한다.
-/// HexGrid가 맵을 (재)생성할 때 FrameMap을 호출해 맵 중심·크기에 맞춰준다.
+/// 줌 속도 조절:
+///   ZoomSensitivity — 휠 한 번에 얼마나 줌이 변하는가(클수록 빠름).
+///   ZoomSmoothTime  — 0이면 즉시, 클수록 부드럽게 따라옴.
+///   지수 보간이라 가까이서도 멀리서도 "비율"이 일정해 자연스럽다.
 /// </summary>
 public class HexCameraController : MonoBehaviour
 {
     [Tooltip("비워두면 Camera.main 사용.")]
     public Camera Cam;
 
-    [Range(30f, 90f)] public float Tilt = 75f; // 내려다보는 각도(90=수직)
-    public float ZoomStep = 0.08f;             // 휠 한 칸당 줌 변화량
-    public float DragPanSpeed = 0.0022f;       // 우클릭 드래그 팬 감도(거리에 비례)
-    public float KeyPanSpeed = 0.7f;           // 키보드 팬 속도(거리에 비례)
+    [Range(30f, 90f)] public float Tilt = 75f;
+
+    [Header("줌")]
+    [Tooltip("휠 입력당 줌 변화량(클수록 빠름). 예전 ZoomStep에 해당.")]
+    public float ZoomSensitivity = 0.1f;
+    [Tooltip("줌 부드러움. 0=즉시 반응, 0.08~0.15면 부드럽게 감속.")]
+    public float ZoomSmoothTime = 0.1f;
+
+    [Header("팬")]
+    public float DragPanSpeed = 0.0022f;
+    public float KeyPanSpeed = 0.7f;
     public bool EnableKeyPan = true;
 
-    Vector3 pivot;            // 바라보는 지점
-    float mapExtent = 100f;   // 맵의 가로/세로 중 큰 쪽 길이
-    float zoom = 1f;          // 0 = 가장 가까이, 1 = 가장 멀리
+    Vector3 pivot;
+    float mapExtent = 100f;
+    float zoom = 1f;        // 현재 줌 (0=가까이, 1=멀리)
+    float zoomTarget = 1f;  // 목표 줌
+    float zoomVel;          // SmoothDamp용
 
     float MinDistance => 25f;
-    // 맵이 클수록 더 멀리 빠질 수 있게 — "맵 크기 증가 → 카메라가 더 높이"
     float MaxDistance => mapExtent * 1.3f + 50f;
+
+    // 선형 Lerp 대신 지수 보간: 가까이/멀리 모두 비율이 일정해 자연스러운 줌
+    float DistanceAt(float z) => MinDistance * Mathf.Pow(MaxDistance / MinDistance, Mathf.Clamp01(z));
+    float CurrentDistance => DistanceAt(zoom);
 
     void Start()
     {
@@ -35,37 +48,34 @@ public class HexCameraController : MonoBehaviour
         Apply();
     }
 
-    /// <summary>맵 중심과 크기에 맞춰 카메라를 다시 잡는다. (HexGrid.Build에서 호출)</summary>
     public void FrameMap(Vector3 center, float extent)
     {
         pivot = center;
         mapExtent = Mathf.Max(extent, 1f);
-        zoom = 1f; // 새 맵은 전체가 보이도록 가장 멀리에서 시작
+        zoom = zoomTarget = 1f; // 전체가 보이도록 가장 멀리에서 시작
+        zoomVel = 0f;
         Apply();
     }
 
     void Update()
     {
-        if (Cam == null)
-        {
-            Cam = Camera.main;
-            if (Cam == null) return;
-        }
+        if (Cam == null) { Cam = Camera.main; if (Cam == null) return; }
 
         var mouse = Mouse.current;
         if (mouse != null)
         {
-            // 휠 줌 (플랫폼별 스크롤 양 차이 때문에 부호만 사용)
             float s = mouse.scroll.ReadValue().y;
             if (Mathf.Abs(s) > 0.01f)
-                zoom = Mathf.Clamp01(zoom - Mathf.Sign(s) * ZoomStep);
+            {
+                // 플랫폼별 스크롤 단위 차가 커서 0.01 단위로 정규화 후 사용
+                float steps = s * 0.01f;
+                zoomTarget = Mathf.Clamp01(zoomTarget - steps * ZoomSensitivity);
+            }
 
-            // 우클릭 드래그 팬 (맵을 손으로 잡고 끄는 느낌)
             if (mouse.rightButton.isPressed)
             {
                 Vector2 delta = mouse.delta.ReadValue();
-                float dist = Mathf.Lerp(MinDistance, MaxDistance, zoom);
-                pivot -= new Vector3(delta.x, 0f, delta.y) * (DragPanSpeed * dist);
+                pivot -= new Vector3(delta.x, 0f, delta.y) * (DragPanSpeed * CurrentDistance);
             }
         }
 
@@ -79,42 +89,35 @@ public class HexCameraController : MonoBehaviour
                 if (kb.sKey.isPressed || kb.downArrowKey.isPressed) m.y -= 1;
                 if (kb.dKey.isPressed || kb.rightArrowKey.isPressed) m.x += 1;
                 if (kb.aKey.isPressed || kb.leftArrowKey.isPressed) m.x -= 1;
-
-                if (m != Vector2.zero)
-                {
-                    Pan(m.normalized, KeyPanSpeed);
-                }
+                if (m != Vector2.zero) Pan(m.normalized, KeyPanSpeed);
             }
         }
+
+        // 목표 줌으로 부드럽게 따라가기 (ZoomSmoothTime=0이면 즉시)
+        zoom = ZoomSmoothTime > 0f
+            ? Mathf.SmoothDamp(zoom, zoomTarget, ref zoomVel, ZoomSmoothTime)
+            : zoomTarget;
 
         Apply();
     }
 
-    /// <summary>
-    /// 화면 기준 방향으로 카메라 기준점을 이동한다.
-    /// x는 좌/우, y는 아래/위이며 속도는 현재 줌 거리에 비례한다.
-    /// </summary>
     public void Pan(Vector2 direction, float speedMultiplier)
     {
         if (direction == Vector2.zero) return;
-
-        float dist = Mathf.Lerp(MinDistance, MaxDistance, zoom);
         pivot += new Vector3(direction.x, 0f, direction.y).normalized
-                 * (speedMultiplier * dist * Time.deltaTime);
+                 * (speedMultiplier * CurrentDistance * Time.deltaTime);
     }
 
     void Apply()
     {
         if (Cam == null) return;
 
-        float dist = Mathf.Lerp(MinDistance, MaxDistance, zoom);
+        float dist = CurrentDistance;
         float t = Tilt * Mathf.Deg2Rad;
         Vector3 offset = new Vector3(0f, dist * Mathf.Sin(t), -dist * Mathf.Cos(t));
 
         Cam.transform.position = pivot + offset;
         Cam.transform.rotation = Quaternion.Euler(Tilt, 0f, 0f);
-
-        // 멀어질수록 / 맵이 클수록 far clip을 늘려 맵이 잘리지 않게 한다.
         Cam.farClipPlane = dist * 2f + mapExtent + 200f;
     }
 }
