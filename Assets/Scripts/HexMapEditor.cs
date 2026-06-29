@@ -42,8 +42,8 @@ public class HexMapEditor : MonoBehaviour
     [Tooltip("자동 이동 속도. HexCameraController의 현재 줌 거리에 비례합니다.")]
     public float EdgePanSpeed = 0.9f;
 
-    const float AreaWidth = 190f;
-    const float ScrollbarGutter = 24f; // 스크롤바를 콘텐츠 오른쪽 바깥으로 밀어내는 여유 폭
+    const float AreaWidth = 220f;
+    const float ScrollbarGutter = 40f; // 스크롤바를 콘텐츠 오른쪽 바깥으로 더 밀어내는 여유 폭
     const float PanelAreaWidth = AreaWidth + ScrollbarGutter;
     const float OriginX = 12f;
     const float PanelTop = 12f;
