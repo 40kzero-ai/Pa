@@ -206,13 +206,13 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 330585543}
   serializedVersion: 2
-  m_LocalRotation: {x: 0.7071068, y: 0, z: 0, w: 0.7071068}
+  m_LocalRotation: {x: 0.60876137, y: 0, z: 0, w: 0.7933534}
   m_LocalPosition: {x: 0, y: 500, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 90, y: 0, z: 0}
+  m_LocalEulerAnglesHint: {x: 75, y: 0, z: 0}
 --- !u!114 &330585547
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -436,6 +436,12 @@ MonoBehaviour:
   UIScale: 1.8
   HighlightMaterial: {fileID: 2100000, guid: 6f39f4fa2e3b20e45afea11f119fc7db, type: 2}
   PreviewYOffset: 0.2
+  MaxNewMapWidth: 200
+  MaxNewMapHeight: 200
+  MaxBrushSize: 20
+  EnablePaintEdgePan: 1
+  EdgePanMargin: 48
+  EdgePanSpeed: 2
 --- !u!114 &596827397
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -452,6 +458,8 @@ MonoBehaviour:
   TerrainMaterial: {fileID: 2100000, guid: 3ef3494e26614d54cb647dbe2c93ba42, type: 2}
   CameraController: {fileID: 330585548}
   AutoFrameCamera: 1
+  ChunkSizeX: 32
+  ChunkSizeZ: 32
 --- !u!4 &596827398
 Transform:
   m_ObjectHideFlags: 0
