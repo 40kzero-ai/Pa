@@ -11,7 +11,7 @@ public static class HexMetrics
 
     // 정점 흐트리기 강도. 너무 크면 셀이 격자에서 너무 벗어나
     // 어느 셀을 편집/클릭하는지 판정하거나 셀 안에 콘텐츠를 배치하기 어려워진다.
-    public const float CellPerturbStrength = 4f;
+    public const float CellPerturbStrength = 0f;
     public const float NoiseScale = 0.02f;                        // 노이즈 샘플링 스케일
 
     // 청크 한 칸이 담는 셀 개수 (이 단위로 메시를 나눠 부분 갱신을 가능하게 함)
