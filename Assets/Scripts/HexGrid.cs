@@ -156,15 +156,15 @@ public class HexGrid : MonoBehaviour
     // 모든 청크 메시의 콜라이더를 병렬로 미리 굽는다. 이후 AssignCollider 대입이 싸진다.
     struct BakeColliderJob : IJobParallelFor
     {
-        [ReadOnly] public NativeArray<int> MeshIds;
+        [ReadOnly] public NativeArray<EntityId> MeshIds;
         public void Execute(int i) => Physics.BakeMesh(MeshIds[i], false);
     }
 
     void BakeCollidersParallel()
     {
         if (chunks == null || chunks.Length == 0) return;
-        var ids = new NativeArray<int>(chunks.Length, Allocator.TempJob);
-        for (int i = 0; i < chunks.Length; i++) ids[i] = chunks[i].MeshInstanceID;
+        var ids = new NativeArray<EntityId>(chunks.Length, Allocator.TempJob);
+        for (int i = 0; i < chunks.Length; i++) ids[i] = chunks[i].MeshEntityId;
 
         var job = new BakeColliderJob { MeshIds = ids };
         job.Schedule(ids.Length, 4).Complete();   // 4 = 배치 크기

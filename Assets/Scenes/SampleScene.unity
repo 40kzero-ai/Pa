@@ -271,9 +271,13 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::HexCameraController
   Cam: {fileID: 330585545}
   Tilt: 75
-  ZoomSensitivity: 0.5
+  ZoomSensitivity: 0.65
   ZoomSmoothTime: 0.1
-  DragPanSpeed: 0.0022
+  ZoomSizePower: 0.4
+  ZoomReferenceExtent: 200
+  ZoomFactorMin: 9.5
+  ZoomFactorMax: 1.8
+  DragPanSpeed: 0.001
   KeyPanSpeed: 0.7
   EnableKeyPan: 1
 --- !u!1 &410087039

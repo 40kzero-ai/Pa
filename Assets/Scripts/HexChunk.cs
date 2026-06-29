@@ -41,8 +41,8 @@ public class HexChunk : MonoBehaviour
 
     public void SetHeightScale(float scale) => heightScale = scale;
 
-    /// <summary>병렬 베이크용 메시 instanceID.</summary>
-    public int MeshInstanceID => mesh.GetInstanceID();
+    /// <summary>병렬 베이크용 메시 EntityId (Unity 6.3+의 BakeMesh가 요구).</summary>
+    public EntityId MeshEntityId => mesh.GetEntityId();
 
     /// <summary>
     /// 청크 메시(정점/uv/삼각형)를 만든다. 콜라이더는 여기서 부착하지 않는다(병렬 베이크 후 AssignCollider).

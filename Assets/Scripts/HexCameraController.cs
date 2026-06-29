@@ -23,6 +23,14 @@ public class HexCameraController : MonoBehaviour
     public float ZoomSensitivity = 0.1f;
     [Tooltip("줌 부드러움. 0=즉시 반응, 0.08~0.15면 부드럽게 감속.")]
     public float ZoomSmoothTime = 0.1f;
+    [Tooltip("맵 크기에 따른 줌 속도 곡선. 0=맵 무관(일정), 0.5=√(완만), 1=선형(과격). 보통 0.3~0.5.")]
+    [Range(0f, 1f)] public float ZoomSizePower = 0.4f;
+    [Tooltip("이 extent를 1배 기준으로 삼는다.")]
+    public float ZoomReferenceExtent = 200f;
+    [Tooltip("줌 속도 배율의 하한(작은 맵이 너무 느리면 1에 가깝게 올림).")]
+    public float ZoomFactorMin = 0.7f;
+    [Tooltip("줌 속도 배율의 상한(큰 맵이 너무 빠르면 낮춤).")]
+    public float ZoomFactorMax = 2.0f;
 
     [Header("팬")]
     public float DragPanSpeed = 0.0022f;
@@ -69,7 +77,11 @@ public class HexCameraController : MonoBehaviour
             {
                 // 플랫폼별 스크롤 단위 차가 커서 0.01 단위로 정규화 후 사용
                 float steps = s * 0.01f;
-                zoomTarget = Mathf.Clamp01(zoomTarget - steps * ZoomSensitivity);
+                // 맵 크기에 따른 줌 속도. 지수로 곡선을 완만하게, 그리고 상/하한으로 양 끝을 묶는다.
+                float ratio = mapExtent / Mathf.Max(1f, ZoomReferenceExtent);
+                float sizeFactor = Mathf.Pow(ratio, ZoomSizePower);
+                sizeFactor = Mathf.Clamp(sizeFactor, ZoomFactorMin, ZoomFactorMax);
+                zoomTarget = Mathf.Clamp01(zoomTarget - steps * ZoomSensitivity * sizeFactor);
             }
 
             if (mouse.rightButton.isPressed)
