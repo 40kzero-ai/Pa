@@ -72,29 +72,70 @@ public class HexGrid : MonoBehaviour
 
     // ───────────────────────── 빌드 ─────────────────────────
 
+    Coroutine buildRoutine;
+    bool building; // 빌드 진행 중에는 data와 cells가 일시적으로 불일치할 수 있어 피킹을 막는다
+
     public void Build(GeometryData newData)
+    {
+        // 진행 중인 빌드가 있으면 중단(연속 빌드 요청 대비)
+        if (buildRoutine != null) { StopCoroutine(buildRoutine); buildRoutine = null; }
+
+        // 활성 상태면 코루틴으로 단계별 진행(각 단계 로그가 완료될 때마다 바로 콘솔에 표시됨).
+        // 비활성/에디트 타임이면 즉시 동기 완주.
+        if (isActiveAndEnabled)
+            buildRoutine = StartCoroutine(BuildRoutine(newData));
+        else
+        {
+            var e = BuildRoutine(newData);
+            while (e.MoveNext()) { }
+        }
+    }
+
+    // 단계마다 yield로 한 프레임 양보 → Debug.Log가 한꺼번에가 아니라 단계 완료 시점마다 표시된다.
+    System.Collections.IEnumerator BuildRoutine(GeometryData newData)
     {
         var total = System.Diagnostics.Stopwatch.StartNew();
         var sw = System.Diagnostics.Stopwatch.StartNew();
-        void Mark(string name) { sw.Stop(); Debug.Log($"[HexGrid] {name}: {sw.Elapsed.TotalMilliseconds:F1} ms"); sw.Restart(); }
 
+        building = true;
         data = newData;
         oceanIndexCache = -2; // 지형 종류가 바뀔 수 있으니 ocean 인덱스 캐시 무효화
         Debug.Log($"맵 빌드 시작: {data.grid.width}x{data.grid.height} / 지형 {data.terrainTypes?.Length ?? 0}종 / 프로빈스 {data.provinces?.Length ?? 0}개");
 
         undoStack.Clear(); redoStack.Clear(); recording = false; strokeOld?.Clear();
+        yield return null;
 
-        BuildPalettes();      Mark("팔레트");
-        BuildDataTextures();  Mark("지형/프로빈스 텍스처");
-        CreateCells();        Mark("논리 셀(브러시/피킹용)");
-        CreateSurface();      Mark("평면 메시");
-        SetupMaterial();      Mark("머티리얼");
-        FrameCamera();        Mark("카메라");
+        BuildPalettes();
+        Debug.Log($"[HexGrid] 팔레트: {sw.Elapsed.TotalMilliseconds:F1} ms"); sw.Restart();
+        yield return null;
+
+        BuildDataTextures();
+        Debug.Log($"[HexGrid] 지형/프로빈스 텍스처: {sw.Elapsed.TotalMilliseconds:F1} ms"); sw.Restart();
+        yield return null;
+
+        CreateCells();
+        Debug.Log($"[HexGrid] 논리 셀(브러시/피킹용): {sw.Elapsed.TotalMilliseconds:F1} ms"); sw.Restart();
+        yield return null;
+
+        CreateSurface();
+        Debug.Log($"[HexGrid] 평면 메시: {sw.Elapsed.TotalMilliseconds:F1} ms"); sw.Restart();
+        yield return null;
+
+        SetupMaterial();
+        Debug.Log($"[HexGrid] 머티리얼: {sw.Elapsed.TotalMilliseconds:F1} ms"); sw.Restart();
+        yield return null;
+
+        FrameCamera();
+        Debug.Log($"[HexGrid] 카메라: {sw.Elapsed.TotalMilliseconds:F1} ms"); sw.Restart();
+
         ProvinceEditVersion++;
+
+        building = false;
 
         total.Stop();
         int w = data.grid.width, h = data.grid.height;
         Debug.Log($"[HexGrid] ▶ 총 빌드: {total.Elapsed.TotalMilliseconds:F1} ms  ({w}x{h}, 셀 {w * h:N0}개)");
+        buildRoutine = null;
     }
 
     public void CreateBlankMap(int width, int height) => CreateBlankMap(width, height, 200, 200);
@@ -130,12 +171,14 @@ public class HexGrid : MonoBehaviour
 
     public HexCell GetCell(Vector3 worldPosition)
     {
-        if (cells == null || data == null) return null;
+        if (cells == null || data == null || building) return null;
         Vector3 local = transform.InverseTransformPoint(worldPosition);
         HexCoordinates c = HexCoordinates.FromPosition(local);
         int offsetX = c.X + c.Z / 2;
         if (c.Z < 0 || c.Z >= data.grid.height || offsetX < 0 || offsetX >= data.grid.width) return null;
-        return cells[offsetX + c.Z * data.grid.width];
+        int index = offsetX + c.Z * data.grid.width;
+        if (index < 0 || index >= cells.Length) return null; // data와 cells 크기 불일치 방어
+        return cells[index];
     }
 
     /// <summary>지형 페인팅: 지형 텍스처 픽셀만 갱신(즉시 반영).</summary>
@@ -282,7 +325,7 @@ public class HexGrid : MonoBehaviour
     public List<HexCell> GetProvinceCells(int provinceIndex)
     {
         var result = new List<HexCell>();
-        if (cells == null || provinceIndex < 0) return result;
+        if (cells == null || building || provinceIndex < 0) return result;
         foreach (HexCell cell in cells)
             if (cell.ProvinceIndex == provinceIndex) result.Add(cell);
         return result;
@@ -291,7 +334,7 @@ public class HexGrid : MonoBehaviour
     public List<ProvinceEdge> GetProvinceBoundaryEdges(int provinceIndex)
     {
         var result = new List<ProvinceEdge>();
-        if (cells == null || provinceIndex < 0) return result;
+        if (cells == null || building || provinceIndex < 0) return result;
 
         foreach (HexCell cell in cells)
         {
@@ -346,12 +389,12 @@ public class HexGrid : MonoBehaviour
         bool even = (z & 1) == 0;
         switch (d)
         {
-            case HexDirection.E:  nx = x + 1; break;
-            case HexDirection.W:  nx = x - 1; break;
-            case HexDirection.NE: nx = even ? x     : x + 1; nz = z + 1; break;
-            case HexDirection.NW: nx = even ? x - 1 : x;     nz = z + 1; break;
-            case HexDirection.SE: nx = even ? x     : x + 1; nz = z - 1; break;
-            case HexDirection.SW: nx = even ? x - 1 : x;     nz = z - 1; break;
+            case HexDirection.E: nx = x + 1; break;
+            case HexDirection.W: nx = x - 1; break;
+            case HexDirection.NE: nx = even ? x : x + 1; nz = z + 1; break;
+            case HexDirection.NW: nx = even ? x - 1 : x; nz = z + 1; break;
+            case HexDirection.SE: nx = even ? x : x + 1; nz = z - 1; break;
+            case HexDirection.SW: nx = even ? x - 1 : x; nz = z - 1; break;
         }
         int w = data.grid.width, h = data.grid.height;
         if (nx < 0 || nx >= w || nz < 0 || nz >= h) return null;
@@ -402,7 +445,7 @@ public class HexGrid : MonoBehaviour
     void BuildDataTextures()
     {
         int w = data.grid.width, h = data.grid.height, len = w * h;
-        terrainTex  = MakeRFloat(terrainTex,  w, h, "TerrainIndex");
+        terrainTex = MakeRFloat(terrainTex, w, h, "TerrainIndex");
         provinceTex = MakeRFloat(provinceTex, w, h, "ProvinceId");
 
         bool hasProv = data.provinceMap != null && data.provinceMap.Length == len;
@@ -414,7 +457,7 @@ public class HexGrid : MonoBehaviour
             int pid = hasProv ? data.provinceMap[i] : -1;
             pPix[i].r = pid < 0 ? 0 : pid + 1;
         }
-        terrainTex.SetPixels(tPix);  terrainTex.Apply(false);
+        terrainTex.SetPixels(tPix); terrainTex.Apply(false);
         provinceTex.SetPixels(pPix); provinceTex.Apply(false);
     }
 
@@ -739,7 +782,8 @@ public class HexGrid : MonoBehaviour
             for (int x = 0; x < w; x++, i++)
                 cells[i] = new HexCell
                 {
-                    X = x, Z = z,
+                    X = x,
+                    Z = z,
                     Position = CellPosition(x, z),
                     TerrainType = data.terrain[i],
                     Elevation = hasElev ? data.elevation[i] : 0,

@@ -6,7 +6,9 @@ using UnityEngine.InputSystem; // 새 Input System
 /// 인게임 맵 에디터 (새 Input System).
 /// - 좌클릭/드래그: 선택 지형으로 칠하기 (지우개는 ocean=0 선택 후 칠하기)
 /// - 좌클릭으로 칠하는 중 화면 가장자리에 가까워지면 자동으로 카메라 이동
-/// - 숫자키 0~: 지형 선택
+/// - 숫자키 1~: 지형/프로빈스 선택 (모드에 따라 1번부터 매핑)
+/// - 프로빈스 모드에서 Alt+클릭: 맵에서 클릭한 셀의 프로빈스를 자동으로 찾아 선택(스포이드)
+/// - Ctrl/Cmd+S: 저장
 /// - 마우스를 올리면 브러시가 칠할 영역을 반투명으로 미리보기
 /// - 좌측 패널: 지형 견본, 브러시 크기, UI 크기(±), 새 맵 생성(W×H), 저장
 /// (카메라 줌/이동은 HexCameraController가 담당: 휠 줌, 우드래그 팬)
@@ -42,7 +44,7 @@ public class HexMapEditor : MonoBehaviour
     [Tooltip("자동 이동 속도. HexCameraController의 현재 줌 거리에 비례합니다.")]
     public float EdgePanSpeed = 0.9f;
 
-    const float AreaWidth = 220f;
+    const float AreaWidth = 260f;
     const float ScrollbarGutter = 20f; // 스크롤바를 콘텐츠 오른쪽 바깥으로 밀어내는 여유 폭
     const float PanelAreaWidth = AreaWidth + ScrollbarGutter;
     const float OriginX = 12f;
@@ -67,6 +69,7 @@ public class HexMapEditor : MonoBehaviour
     Vector2 panelScroll;         // 패널 전체 스크롤 위치
     float lastPanelH;            // 이번 프레임 패널 높이(히트테스트용)
     bool showFileSection = true; // 파일·설정 섹션 접기
+    bool showProvinceList = true; // 프로빈스 목록 접기
 
     // 미리보기
     GameObject previewGO;
@@ -109,7 +112,7 @@ public class HexMapEditor : MonoBehaviour
         MaxNewMapWidth = Mathf.Max(1, MaxNewMapWidth);
         MaxNewMapHeight = Mathf.Max(1, MaxNewMapHeight);
         MaxBrushSize = Mathf.Max(0, MaxBrushSize);
-        brushSize = Mathf.Clamp(brushSize, 1, MaxBrushSize);
+        brushSize = Mathf.Clamp(brushSize, 0, MaxBrushSize); // 최소 0 = 한 칸
     }
 
     void SetupPreview()
@@ -166,17 +169,31 @@ public class HexMapEditor : MonoBehaviour
     {
         if (Grid == null) return;
 
+        bool altHeld = false;
         Keyboard keyboard = Keyboard.current;
         if (keyboard != null)
         {
-            for (int i = 0; i < DigitKeys.Length; i++)
-                if (keyboard[DigitKeys[i]].wasPressedThisFrame)
-                    activeTerrain = i;
+            // 숫자키 1~9 → 인덱스 0~8 (1부터 시작). 현재 모드에 따라 지형/프로빈스를 선택한다.
+            for (int i = 1; i < DigitKeys.Length; i++)
+            {
+                if (!keyboard[DigitKeys[i]].wasPressedThisFrame) continue;
+                int sel = i - 1;
+                if (paintMode == HexGrid.EditChannel.Terrain)
+                {
+                    TerrainType[] t = Grid.TerrainTypes;
+                    if (t != null && sel < t.Length) activeTerrain = sel;
+                }
+                else
+                {
+                    if (sel < Grid.ProvinceCount) activeProvince = sel;
+                }
+            }
 
-            // Ctrl/Cmd + Z = 되돌리기, +Shift 또는 Ctrl+Y = 다시
+            // Ctrl/Cmd + Z = 되돌리기, +Shift 또는 Ctrl+Y = 다시, Ctrl/Cmd + S = 저장
             bool mod = keyboard.leftCtrlKey.isPressed || keyboard.rightCtrlKey.isPressed
                      || keyboard.leftMetaKey.isPressed || keyboard.rightMetaKey.isPressed;
             bool shift = keyboard.leftShiftKey.isPressed || keyboard.rightShiftKey.isPressed;
+            altHeld = keyboard.leftAltKey.isPressed || keyboard.rightAltKey.isPressed;
 
             if (mod && keyboard.zKey.wasPressedThisFrame)
             {
@@ -185,6 +202,11 @@ public class HexMapEditor : MonoBehaviour
             else if (mod && keyboard.yKey.wasPressedThisFrame)
             {
                 Grid.Redo();
+            }
+            else if (mod && keyboard.sKey.wasPressedThisFrame)
+            {
+                Grid.SaveToFile(SavePath);
+                status = "저장됨 (Ctrl+S)";
             }
         }
 
@@ -195,14 +217,25 @@ public class HexMapEditor : MonoBehaviour
             if (Grid.CameraController != null)
                 Grid.CameraController.BlockMouseOverUI = IsPointerOverPanel(mouse.position.ReadValue());
 
-            if (mouse.leftButton.wasPressedThisFrame) { Grid.BeginStroke(paintMode); hasLastPaint = false; }
-            if (mouse.leftButton.isPressed)
+            // 프로빈스 모드 + Alt: 맵에서 클릭한 셀의 프로빈스를 자동으로 찾아 선택(스포이드)
+            bool pickMode = paintMode == HexGrid.EditChannel.Province && altHeld;
+            if (pickMode)
             {
-                Vector2 screenPos = mouse.position.ReadValue();
-                TryPaint(screenPos);
-                TryEdgePanWhilePainting(screenPos);
+                if (mouse.leftButton.wasPressedThisFrame)
+                    PickProvinceAt(mouse.position.ReadValue());
+                hasLastPaint = false;
             }
-            if (mouse.leftButton.wasReleasedThisFrame) { Grid.EndStroke(); hasLastPaint = false; }
+            else
+            {
+                if (mouse.leftButton.wasPressedThisFrame) { Grid.BeginStroke(paintMode); hasLastPaint = false; }
+                if (mouse.leftButton.isPressed)
+                {
+                    Vector2 screenPos = mouse.position.ReadValue();
+                    TryPaint(screenPos);
+                    TryEdgePanWhilePainting(screenPos);
+                }
+                if (mouse.leftButton.wasReleasedThisFrame) { Grid.EndStroke(); hasLastPaint = false; }
+            }
         }
 
         UpdateProvinceHighlight();
@@ -271,6 +304,22 @@ public class HexMapEditor : MonoBehaviour
             Grid.PaintAt(point, activeTerrain, brushSize);
         else
             Grid.PaintProvinceAt(point, activeProvince, brushSize);
+    }
+
+    /// <summary>맵에서 클릭한 셀이 어느 프로빈스에 속하는지 자동으로 찾아 선택한다(스포이드).
+    /// 무소속(-1) 셀이면 지우개로 선택된다.</summary>
+    void PickProvinceAt(Vector2 screenPos)
+    {
+        if (IsPointerOverPanel(screenPos)) return;
+        if (!TryGetGroundPoint(screenPos, out Vector3 point)) return;
+
+        HexCell cell = Grid.GetCell(point);
+        if (cell == null) return;
+
+        activeProvince = cell.ProvinceIndex; // -1 = 무소속(지우개)
+        status = cell.ProvinceIndex >= 0
+            ? $"프로빈스 {cell.ProvinceIndex + 1} 선택 (스포이드)"
+            : "무소속 셀 (스포이드)";
     }
 
     void TryEdgePanWhilePainting(Vector2 screenPos)
@@ -461,29 +510,36 @@ public class HexMapEditor : MonoBehaviour
             paintMode = HexGrid.EditChannel.Province;
         GUILayout.EndHorizontal();
 
-        GUILayout.Label($"브러시 {brushSize}   (1~{MaxBrushSize})");
-        brushSize = Mathf.RoundToInt(GUILayout.HorizontalSlider(brushSize, 1, MaxBrushSize, GUILayout.Height(16)));
+        GUILayout.Label($"브러시 {brushSize}   (0~{MaxBrushSize})  ·  0 = 한 칸");
+        brushSize = Mathf.RoundToInt(GUILayout.HorizontalSlider(brushSize, 0, MaxBrushSize, GUILayout.Height(16)));
         GUILayout.Space(4);
 
         // ───── 목록 (지형 / 프로빈스) — 패널 전체 스크롤에 포함 ─────
-        GUILayout.Label(paintMode == HexGrid.EditChannel.Terrain ? "지형  (숫자키 0~)" : $"프로빈스  ({Grid.ProvinceCount}개)");
         if (paintMode == HexGrid.EditChannel.Terrain)
         {
+            GUILayout.Label("지형  (숫자키 1~)");
             for (int i = 0; i < types.Length; i++)
             {
                 GUI.backgroundColor = ParseColor(types[i].color);
-                if (GUILayout.Button((i == activeTerrain ? "●  " : "○  ") + i + "   " + types[i].id, GUILayout.Height(24)))
+                if (GUILayout.Button((i == activeTerrain ? "●  " : "○  ") + (i + 1) + "   " + types[i].id, GUILayout.Height(24)))
                     activeTerrain = i;
             }
         }
         else
         {
-            int pc = Grid.ProvinceCount;
-            for (int i = 0; i < pc; i++)
+            // 프로빈스 목록은 접을 수 있다(항목이 많을 때 패널을 간결하게).
+            showProvinceList = GUILayout.Toggle(showProvinceList,
+                (showProvinceList ? "▼ " : "▶ ") + $"프로빈스 목록  ({Grid.ProvinceCount}개, 숫자키 1~)",
+                "button", GUILayout.Height(22));
+            if (showProvinceList)
             {
-                GUI.backgroundColor = Grid.GetProvinceColor(i);
-                if (GUILayout.Button((i == activeProvince ? "●  " : "○  ") + "프로빈스 " + i, GUILayout.Height(22)))
-                    activeProvince = i;
+                int pc = Grid.ProvinceCount;
+                for (int i = 0; i < pc; i++)
+                {
+                    GUI.backgroundColor = Grid.GetProvinceColor(i);
+                    if (GUILayout.Button((i == activeProvince ? "●  " : "○  ") + "프로빈스 " + (i + 1), GUILayout.Height(22)))
+                        activeProvince = i;
+                }
             }
         }
         GUI.backgroundColor = prevBg;
@@ -491,6 +547,7 @@ public class HexMapEditor : MonoBehaviour
         // ───── 프로빈스 모드 액션 ─────
         if (paintMode == HexGrid.EditChannel.Province)
         {
+            GUILayout.Label("Alt+클릭: 맵에서 프로빈스 선택 (스포이드)");
             GUILayout.BeginHorizontal();
             if (GUILayout.Button("+ 새 프로빈스", GUILayout.Height(22))) activeProvince = Grid.AddProvince();
             GUI.enabled = activeProvince >= 0 && activeProvince < Grid.ProvinceCount;
@@ -501,7 +558,7 @@ public class HexMapEditor : MonoBehaviour
                 {
                     int pcAfter = Grid.ProvinceCount;
                     activeProvince = pcAfter > 0 ? Mathf.Min(removed, pcAfter - 1) : -1;
-                    status = $"프로빈스 {removed} 제거됨";
+                    status = $"프로빈스 {removed + 1} 제거됨";
                 }
             }
             GUI.enabled = true;
