@@ -443,8 +443,8 @@ MonoBehaviour:
   PreviewYOffset: 0.2
   MaxNewMapWidth: 5000
   MaxNewMapHeight: 5000
-  MaxBrushSize: 30
-  PreviewMaxBrush: 31
+  MaxBrushSize: 50
+  PreviewMaxBrush: 51
   EnablePaintEdgePan: 1
   EdgePanMargin: 48
   EdgePanSpeed: 2
