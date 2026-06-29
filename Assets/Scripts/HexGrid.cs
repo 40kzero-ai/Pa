@@ -49,6 +49,7 @@ public class HexGrid : MonoBehaviour
     public int CurrentWidth => data != null ? data.grid.width : 0;
     public int CurrentHeight => data != null ? data.grid.height : 0;
     public int ProvinceEditVersion { get; private set; }
+    public struct ProvinceEdge { public Vector3 A; public Vector3 B; }
 
     // ── 되돌리기(지형/프로빈스 페인팅 단위) ──
     public enum EditChannel { Terrain, Province }
@@ -284,6 +285,31 @@ public class HexGrid : MonoBehaviour
         if (cells == null || provinceIndex < 0) return result;
         foreach (HexCell cell in cells)
             if (cell.ProvinceIndex == provinceIndex) result.Add(cell);
+        return result;
+    }
+
+    public List<ProvinceEdge> GetProvinceBoundaryEdges(int provinceIndex)
+    {
+        var result = new List<ProvinceEdge>();
+        if (cells == null || provinceIndex < 0) return result;
+
+        foreach (HexCell cell in cells)
+        {
+            if (cell.ProvinceIndex != provinceIndex) continue;
+            for (int d = 0; d < 6; d++)
+            {
+                HexCell neighbor = NeighborOf(cell, (HexDirection)d);
+                if (neighbor != null && neighbor.ProvinceIndex == provinceIndex) continue;
+
+                Vector3 c = cell.Position;
+                result.Add(new ProvinceEdge
+                {
+                    A = c + HexMetrics.Corners[d],
+                    B = c + HexMetrics.Corners[d + 1]
+                });
+            }
+        }
+
         return result;
     }
 

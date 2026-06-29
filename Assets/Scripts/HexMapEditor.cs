@@ -75,6 +75,9 @@ public class HexMapEditor : MonoBehaviour
     GameObject provinceHighlightGO;
     MeshFilter provinceHighlightFilter;
     Mesh provinceHighlightMesh;
+    GameObject provinceBorderGO;
+    MeshFilter provinceBorderFilter;
+    Mesh provinceBorderMesh;
     int lastHighlightedProvince = int.MinValue;
     int lastProvinceHighlightVersion = -1;
     HexCell lastCenter;
@@ -138,13 +141,25 @@ public class HexMapEditor : MonoBehaviour
         provinceHighlightGO.transform.SetParent(Grid.transform, false);
         provinceHighlightFilter = provinceHighlightGO.AddComponent<MeshFilter>();
         var provinceHighlightRenderer = provinceHighlightGO.AddComponent<MeshRenderer>();
-        var provinceHighlightMaterial = new Material(HighlightMaterial) { color = new Color(1f, 0.9f, 0.15f, 0.28f) };
+        var provinceHighlightMaterial = new Material(HighlightMaterial) { color = new Color(0.1f, 1f, 0.45f, 0.38f) };
         provinceHighlightRenderer.sharedMaterial = provinceHighlightMaterial;
 
         provinceHighlightMesh = new Mesh { name = "Selected Province Highlight" };
         provinceHighlightMesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
         provinceHighlightFilter.mesh = provinceHighlightMesh;
         provinceHighlightGO.SetActive(false);
+
+        provinceBorderGO = new GameObject("SelectedProvinceBorder");
+        provinceBorderGO.transform.SetParent(Grid.transform, false);
+        provinceBorderFilter = provinceBorderGO.AddComponent<MeshFilter>();
+        var provinceBorderRenderer = provinceBorderGO.AddComponent<MeshRenderer>();
+        var provinceBorderMaterial = new Material(HighlightMaterial) { color = new Color(1f, 0.92f, 0.65f, 0.95f) };
+        provinceBorderRenderer.sharedMaterial = provinceBorderMaterial;
+
+        provinceBorderMesh = new Mesh { name = "Selected Province Border" };
+        provinceBorderMesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
+        provinceBorderFilter.mesh = provinceBorderMesh;
+        provinceBorderGO.SetActive(false);
     }
 
     void Update()
@@ -320,10 +335,11 @@ public class HexMapEditor : MonoBehaviour
 
     void UpdateProvinceHighlight()
     {
-        if (provinceHighlightGO == null || Grid == null) return;
+        if (provinceHighlightGO == null || provinceBorderGO == null || Grid == null) return;
         if (paintMode != HexGrid.EditChannel.Province || activeProvince < 0 || activeProvince >= Grid.ProvinceCount)
         {
             provinceHighlightGO.SetActive(false);
+            provinceBorderGO.SetActive(false);
             lastHighlightedProvince = int.MinValue;
             lastProvinceHighlightVersion = -1;
             return;
@@ -332,13 +348,48 @@ public class HexMapEditor : MonoBehaviour
         if (activeProvince == lastHighlightedProvince && Grid.ProvinceEditVersion == lastProvinceHighlightVersion)
         {
             if (!provinceHighlightGO.activeSelf) provinceHighlightGO.SetActive(true);
+            if (!provinceBorderGO.activeSelf) provinceBorderGO.SetActive(true);
             return;
         }
 
         BuildCellOverlayMesh(Grid.GetProvinceCells(activeProvince), provinceHighlightMesh, PreviewYOffset * 0.5f);
+        BuildProvinceBorderMesh(Grid.GetProvinceBoundaryEdges(activeProvince), provinceBorderMesh, PreviewYOffset * 1.1f, 1.4f);
         lastHighlightedProvince = activeProvince;
         lastProvinceHighlightVersion = Grid.ProvinceEditVersion;
         provinceHighlightGO.SetActive(true);
+        provinceBorderGO.SetActive(true);
+    }
+
+    void BuildProvinceBorderMesh(List<HexGrid.ProvinceEdge> edges, Mesh mesh, float yOffset, float width)
+    {
+        var verts = new List<Vector3>();
+        var tris = new List<int>();
+        float halfWidth = width * 0.5f;
+
+        foreach (var edge in edges)
+        {
+            Vector3 a = edge.A;
+            Vector3 b = edge.B;
+            a.y += yOffset; b.y += yOffset;
+
+            Vector3 dir = b - a;
+            if (dir.sqrMagnitude <= 0.0001f) continue;
+            dir.Normalize();
+            Vector3 side = new Vector3(-dir.z, 0f, dir.x) * halfWidth;
+
+            int idx = verts.Count;
+            verts.Add(a - side);
+            verts.Add(a + side);
+            verts.Add(b + side);
+            verts.Add(b - side);
+            tris.Add(idx); tris.Add(idx + 1); tris.Add(idx + 2);
+            tris.Add(idx); tris.Add(idx + 2); tris.Add(idx + 3);
+        }
+
+        mesh.Clear();
+        mesh.SetVertices(verts);
+        mesh.SetTriangles(tris, 0);
+        mesh.RecalculateBounds();
     }
 
     void BuildCellOverlayMesh(List<HexCell> cells, Mesh mesh, float yOffset)
