@@ -341,7 +341,9 @@ public class HexMapEditor : MonoBehaviour
         float availH = Screen.height / Mathf.Max(0.01f, UIScale) - PanelTop * 2f;
         lastPanelH = Mathf.Clamp(PanelHeight, 200f, availH);
 
-        GUILayout.BeginArea(new Rect(0, 0, PanelAreaWidth, lastPanelH), GUI.skin.box);
+        // 패널 박스는 기존 콘텐츠 폭까지만 그리고, 스크롤바는 박스 밖 오른쪽 거터에 둔다.
+        GUI.Box(new Rect(0, 0, AreaWidth, lastPanelH), GUIContent.none, GUI.skin.box);
+        GUILayout.BeginArea(new Rect(0, 0, PanelAreaWidth, lastPanelH), GUIStyle.none);
         // 가로 스크롤바 끄고, 세로는 항상 표시(레이아웃 일정하게)
         panelScroll = GUILayout.BeginScrollView(panelScroll, false, true,
             GUIStyle.none, GUI.skin.verticalScrollbar);
