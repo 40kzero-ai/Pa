@@ -22,6 +22,10 @@ public class HexMapEditor : MonoBehaviour
     public Material HighlightMaterial;
     public float PreviewYOffset = 0.2f;
 
+    [Header("새 맵 생성 제한")]
+    [Min(1)] public int MaxNewMapWidth = 200;
+    [Min(1)] public int MaxNewMapHeight = 200;
+
     [Header("화면 가장자리 자동 이동")]
     [Tooltip("좌클릭으로 칠하는 중 마우스가 화면 가장자리에 가까워지면 카메라를 자동 이동합니다.")]
     public bool EnablePaintEdgePan = true;
@@ -60,7 +64,19 @@ public class HexMapEditor : MonoBehaviour
 
     void Start()
     {
+        ClampNewMapLimits();
         if (Grid != null) SetupPreview();
+    }
+
+    void OnValidate()
+    {
+        ClampNewMapLimits();
+    }
+
+    void ClampNewMapLimits()
+    {
+        MaxNewMapWidth = Mathf.Max(1, MaxNewMapWidth);
+        MaxNewMapHeight = Mathf.Max(1, MaxNewMapHeight);
     }
 
     void SetupPreview()
@@ -294,7 +310,7 @@ public class HexMapEditor : MonoBehaviour
 
         GUILayout.Space(8);
 
-        GUILayout.Label("새 맵 크기 (W × H)");
+        GUILayout.Label($"새 맵 크기 (W × H, 최대 {MaxNewMapWidth}×{MaxNewMapHeight})");
         GUILayout.BeginHorizontal();
         widthText = GUILayout.TextField(widthText, GUILayout.Width(46), GUILayout.Height(22));
         GUILayout.Label("×", GUILayout.Width(14));
@@ -302,7 +318,7 @@ public class HexMapEditor : MonoBehaviour
         GUILayout.EndHorizontal();
         if (GUILayout.Button("새 맵 생성", GUILayout.Height(26)))
             if (int.TryParse(widthText, out int w) && int.TryParse(heightText, out int h))
-                Grid.CreateBlankMap(w, h);
+                Grid.CreateBlankMap(w, h, MaxNewMapWidth, MaxNewMapHeight);
 
         GUILayout.Space(10);
 

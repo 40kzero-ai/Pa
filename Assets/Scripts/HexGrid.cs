@@ -83,10 +83,12 @@ public class HexGrid : MonoBehaviour
         FrameCamera();
     }
 
-    public void CreateBlankMap(int width, int height)
+    public void CreateBlankMap(int width, int height) => CreateBlankMap(width, height, 200, 200);
+
+    public void CreateBlankMap(int width, int height, int maxWidth, int maxHeight)
     {
-        width = Mathf.Clamp(width, 1, 200);
-        height = Mathf.Clamp(height, 1, 200);
+        width = Mathf.Clamp(width, 1, Mathf.Max(1, maxWidth));
+        height = Mathf.Clamp(height, 1, Mathf.Max(1, maxHeight));
 
         var blank = new GeometryData
         {
