@@ -1,8 +1,9 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 /// <summary>
-/// 셀의 한 묶음(청크)을 받아 "흐트린 헥스 메시"로 삼각형화한다.
+/// 셀의 한 묶음(청크)을 받아 헥스 메시로 삼각형화한다.
 /// MeshCollider를 함께 두어, 마우스 레이캐스트로 클릭한 셀을 집어낼 수 있게 한다.
 /// </summary>
 [RequireComponent(typeof(MeshFilter), typeof(MeshRenderer), typeof(MeshCollider))]
@@ -18,7 +19,7 @@ public class HexChunk : MonoBehaviour
 
     void Awake()
     {
-        mesh = new Mesh { name = "Hex Chunk Mesh" };
+        mesh = new Mesh { name = "Hex Chunk Mesh", indexFormat = IndexFormat.UInt32 };
         GetComponent<MeshFilter>().mesh = mesh;
         meshCollider = GetComponent<MeshCollider>();
     }
@@ -63,9 +64,9 @@ public class HexChunk : MonoBehaviour
     void AddTriangle(Vector3 v1, Vector3 v2, Vector3 v3)
     {
         int index = vertices.Count;
-        vertices.Add(HexMetrics.Perturb(v1));
-        vertices.Add(HexMetrics.Perturb(v2));
-        vertices.Add(HexMetrics.Perturb(v3));
+        vertices.Add(v1);
+        vertices.Add(v2);
+        vertices.Add(v3);
         triangles.Add(index);
         triangles.Add(index + 1);
         triangles.Add(index + 2);

@@ -2,8 +2,7 @@ using UnityEngine;
 
 /// <summary>
 /// 헥스 좌표 변환 유틸. 월드 좌표에서 어느 셀을 클릭했는지 알아낼 때 쓴다.
-/// 메시는 흐트러져 있어도, 흐트림을 "작게" 유지하면(HexMetrics.CellPerturbStrength)
-/// 클릭 지점에서 가장 가까운 "논리 셀"을 정확히 집어낼 수 있다.
+/// 클릭 지점에서 가장 가까운 "논리 셀"을 고른다.
 /// </summary>
 [System.Serializable]
 public struct HexCoordinates

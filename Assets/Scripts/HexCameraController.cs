@@ -82,14 +82,25 @@ public class HexCameraController : MonoBehaviour
 
                 if (m != Vector2.zero)
                 {
-                    float dist = Mathf.Lerp(MinDistance, MaxDistance, zoom);
-                    pivot += new Vector3(m.x, 0f, m.y).normalized
-                             * (KeyPanSpeed * dist * Time.deltaTime);
+                    Pan(m.normalized, KeyPanSpeed);
                 }
             }
         }
 
         Apply();
+    }
+
+    /// <summary>
+    /// 화면 기준 방향으로 카메라 기준점을 이동한다.
+    /// x는 좌/우, y는 아래/위이며 속도는 현재 줌 거리에 비례한다.
+    /// </summary>
+    public void Pan(Vector2 direction, float speedMultiplier)
+    {
+        if (direction == Vector2.zero) return;
+
+        float dist = Mathf.Lerp(MinDistance, MaxDistance, zoom);
+        pivot += new Vector3(direction.x, 0f, direction.y).normalized
+                 * (speedMultiplier * dist * Time.deltaTime);
     }
 
     void Apply()

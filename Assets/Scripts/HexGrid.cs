@@ -21,6 +21,12 @@ public class HexGrid : MonoBehaviour
     [Tooltip("카메라 컨트롤러가 없을 때만 쓰는 단순 자동 프레이밍.")]
     public bool AutoFrameCamera = true;
 
+    [Header("청크 설정")]
+    [Tooltip("청크 하나가 가로로 담는 셀 수. 큰 맵일수록 5보다 크게 잡아 GameObject/Collider 수를 줄이세요.")]
+    [Min(1)] public int ChunkSizeX = 32;
+    [Tooltip("청크 하나가 세로로 담는 셀 수. 큰 맵일수록 5보다 크게 잡아 GameObject/Collider 수를 줄이세요.")]
+    [Min(1)] public int ChunkSizeZ = 32;
+
     GeometryData data;
     HexCell[] cells;
     HexChunk[] chunks;
@@ -44,6 +50,8 @@ public class HexGrid : MonoBehaviour
 
     void Start()
     {
+        ClampChunkSizes();
+
         if (CameraController == null)
             CameraController = FindFirstObjectByType<HexCameraController>();
 
@@ -55,10 +63,22 @@ public class HexGrid : MonoBehaviour
         Build(HexGeometryLoader.Load(GeometryJson.text));
     }
 
+    void OnValidate()
+    {
+        ClampChunkSizes();
+    }
+
+    void ClampChunkSizes()
+    {
+        ChunkSizeX = Mathf.Max(1, ChunkSizeX);
+        ChunkSizeZ = Mathf.Max(1, ChunkSizeZ);
+    }
+
     // ───────────────────────── 빌드 / 새 맵 ─────────────────────────
 
     public void Build(GeometryData newData)
     {
+        ClampChunkSizes();
         data = newData;
         Debug.Log($"맵 빌드: {data.grid.width}x{data.grid.height} / " +
                   $"지형 {data.terrainTypes?.Length ?? 0}종 / " +
@@ -83,10 +103,12 @@ public class HexGrid : MonoBehaviour
         FrameCamera();
     }
 
-    public void CreateBlankMap(int width, int height)
+    public void CreateBlankMap(int width, int height) => CreateBlankMap(width, height, 200, 200);
+
+    public void CreateBlankMap(int width, int height, int maxWidth, int maxHeight)
     {
-        width = Mathf.Clamp(width, 1, 200);
-        height = Mathf.Clamp(height, 1, 200);
+        width = Mathf.Clamp(width, 1, Mathf.Max(1, maxWidth));
+        height = Mathf.Clamp(height, 1, Mathf.Max(1, maxHeight));
 
         var blank = new GeometryData
         {
@@ -285,8 +307,8 @@ public class HexGrid : MonoBehaviour
 
     void CreateChunks()
     {
-        chunkCountX = Mathf.CeilToInt((float)data.grid.width / HexMetrics.ChunkSizeX);
-        chunkCountZ = Mathf.CeilToInt((float)data.grid.height / HexMetrics.ChunkSizeZ);
+        chunkCountX = Mathf.CeilToInt((float)data.grid.width / ChunkSizeX);
+        chunkCountZ = Mathf.CeilToInt((float)data.grid.height / ChunkSizeZ);
         chunks = new HexChunk[chunkCountX * chunkCountZ];
 
         for (int z = 0, i = 0; z < chunkCountZ; z++)
@@ -362,8 +384,8 @@ public class HexGrid : MonoBehaviour
 
     void AddCellToChunk(int x, int z, HexCell cell)
     {
-        int cx = x / HexMetrics.ChunkSizeX;
-        int cz = z / HexMetrics.ChunkSizeZ;
+        int cx = x / ChunkSizeX;
+        int cz = z / ChunkSizeZ;
         HexChunk chunk = chunks[cx + cz * chunkCountX];
         chunk.AddCell(cell);
         cell.Chunk = chunk;

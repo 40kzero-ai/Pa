@@ -1,16 +1,16 @@
 # Hex Map Skeleton (Unity)
 
-`geometry.json`(맵의 "판")을 읽어 **논리 헥스 격자**를 만들고, **청크 단위로 정점을 흐트린(perturbed) 메시**를 생성하는 최소 골격입니다. 우리가 설계한 "지오메트리(데이터) ↔ 렌더링(메시) 분리"와 "데이터 주도 + 모드 친화" 구조를 그대로 따릅니다.
+`geometry.json`(맵의 "판")을 읽어 **논리 헥스 격자**를 만들고, **청크 단위 메시**를 생성하는 최소 골격입니다. 우리가 설계한 "지오메트리(데이터) ↔ 렌더링(메시) 분리"와 "데이터 주도 + 모드 친화" 구조를 그대로 따릅니다.
 
 ## 들어있는 파일
 
 ```
 Scripts/
-  HexMetrics.cs          # 헥스 기하 상수 + 정점 흐트리기(Perlin)
+  HexMetrics.cs          # 헥스 기하 상수
   HexCell.cs             # 논리 셀 + 방향(이웃) 정의
   GeometryData.cs        # geometry.json 직렬화 클래스
   HexGeometryLoader.cs   # JSON → GeometryData 로더
-  HexChunk.cs            # 셀 묶음을 흐트린 메시로 삼각형화
+  HexChunk.cs            # 셀 묶음을 헥스 메시로 삼각형화
   HexGrid.cs             # 진입점: 로드 → 셀/청크 생성 → 메시 빌드
 Shaders/
   VertexColorUnlit.shader  # 정점 컬러 출력 (Built-in RP용)
@@ -26,14 +26,13 @@ StreamingAssets/
 4. 빈 GameObject 생성 → **HexGrid** 컴포넌트 추가 → 인스펙터에서
    - `Geometry Json` 칸에 `geometry.json`을 드래그
    - `Terrain Material` 칸에 2번에서 만든 머티리얼을 드래그
-5. **Play**. 카메라를 위에서 내려다보게 두면, 흐트러진 헥스 지형이 보입니다. Console에는 로드된 맵 크기·지형·프로빈스 개수가 찍힙니다.
+5. **Play**. 카메라를 위에서 내려다보게 두면, 헥스 지형이 보입니다. Console에는 로드된 맵 크기·지형·프로빈스 개수가 찍힙니다.
 
 > 카메라 팁: Position 대략 (35, 60, 20), Rotation (70, 0, 0) 정도로 두면 샘플 맵이 화면에 들어옵니다.
 
 ## 핵심 동작
 
-- **정점 흐트리기**: `HexMetrics.Perturb`가 정점을 "월드 좌표 기반" 펄린 노이즈로 이동시킵니다. 인접 셀이 공유하는 정점은 월드 좌표가 같아 양쪽에서 똑같이 움직이므로 메시에 틈이 생기지 않습니다. 강도는 `CellPerturbStrength`(기본 4)로 조절하세요. 너무 키우면 셀이 격자에서 벗어나 클릭 판정·콘텐츠 배치가 어려워집니다.
-- **청크**: 맵을 `ChunkSizeX × ChunkSizeZ`(기본 5×5) 단위로 나눠 메시를 따로 만듭니다. 나중에 한 셀만 바뀌어도 그 청크만 다시 `Triangulate()`하면 됩니다.
+- **청크**: 맵을 HexGrid 인스펙터의 `Chunk Size X/Z` 단위(기본 32×32)로 나눠 메시를 따로 만듭니다. 나중에 한 셀만 바뀌어도 그 청크만 다시 `Triangulate()`하면 됩니다.
 - **데이터 주도**: 지형·고도·프로빈스가 전부 `geometry.json`에 있습니다. 코드에 하드코딩된 맵 크기/지형이 없으므로, JSON만 바꾸면 다른 맵이 됩니다 → 시나리오/모드가 자연스럽게 따라옵니다.
 
 ## 알아둘 점 (JsonUtility 한계)

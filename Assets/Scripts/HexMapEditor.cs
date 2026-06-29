@@ -5,6 +5,7 @@ using UnityEngine.InputSystem; // 새 Input System
 /// <summary>
 /// 인게임 맵 에디터 (새 Input System).
 /// - 좌클릭/드래그: 선택 지형으로 칠하기 (지우개는 ocean=0 선택 후 칠하기)
+/// - 좌클릭으로 칠하는 중 화면 가장자리에 가까워지면 자동으로 카메라 이동
 /// - 숫자키 0~: 지형 선택
 /// - 마우스를 올리면 브러시가 칠할 영역을 반투명으로 미리보기
 /// - 좌측 패널: 지형 견본, 브러시 크기, UI 크기(±), 새 맵 생성(W×H), 저장
@@ -20,6 +21,21 @@ public class HexMapEditor : MonoBehaviour
     [Tooltip("브러시 미리보기 머티리얼. 비우면 Custom/HexHighlight로 자동 생성.")]
     public Material HighlightMaterial;
     public float PreviewYOffset = 0.2f;
+
+    [Header("새 맵 생성 제한")]
+    [Min(1)] public int MaxNewMapWidth = 200;
+    [Min(1)] public int MaxNewMapHeight = 200;
+
+    [Header("브러시 설정")]
+    [Min(0)] public int MaxBrushSize = 20;
+
+    [Header("화면 가장자리 자동 이동")]
+    [Tooltip("좌클릭으로 칠하는 중 마우스가 화면 가장자리에 가까워지면 카메라를 자동 이동합니다.")]
+    public bool EnablePaintEdgePan = true;
+    [Tooltip("화면 가장자리에서 이 픽셀 거리 안으로 들어오면 자동 이동합니다.")]
+    public float EdgePanMargin = 48f;
+    [Tooltip("자동 이동 속도. HexCameraController의 현재 줌 거리에 비례합니다.")]
+    public float EdgePanSpeed = 0.9f;
 
     const float AreaWidth = 190f;
     const float OriginX = 12f;
@@ -51,7 +67,21 @@ public class HexMapEditor : MonoBehaviour
 
     void Start()
     {
+        ClampNewMapLimits();
         if (Grid != null) SetupPreview();
+    }
+
+    void OnValidate()
+    {
+        ClampNewMapLimits();
+    }
+
+    void ClampNewMapLimits()
+    {
+        MaxNewMapWidth = Mathf.Max(1, MaxNewMapWidth);
+        MaxNewMapHeight = Mathf.Max(1, MaxNewMapHeight);
+        MaxBrushSize = Mathf.Max(0, MaxBrushSize);
+        brushSize = Mathf.Clamp(brushSize, 0, MaxBrushSize);
     }
 
     void SetupPreview()
@@ -109,7 +139,12 @@ public class HexMapEditor : MonoBehaviour
         if (mouse != null)
         {
             if (mouse.leftButton.wasPressedThisFrame) Grid.BeginStroke();
-            if (mouse.leftButton.isPressed) TryPaint(mouse.position.ReadValue());
+            if (mouse.leftButton.isPressed)
+            {
+                Vector2 screenPos = mouse.position.ReadValue();
+                TryPaint(screenPos);
+                TryEdgePanWhilePainting(screenPos);
+            }
             if (mouse.leftButton.wasReleasedThisFrame) Grid.EndStroke();
         }
 
@@ -140,6 +175,24 @@ public class HexMapEditor : MonoBehaviour
         Ray ray = cam.ScreenPointToRay(screenPos);
         if (Physics.Raycast(ray, out RaycastHit hit))
             Grid.PaintAt(hit.point, activeTerrain, brushSize);
+    }
+
+    void TryEdgePanWhilePainting(Vector2 screenPos)
+    {
+        if (!EnablePaintEdgePan || IsPointerOverPanel(screenPos)) return;
+        if (Grid.CameraController == null)
+            Grid.CameraController = FindFirstObjectByType<HexCameraController>();
+        if (Grid.CameraController == null) return;
+
+        Vector2 direction = Vector2.zero;
+        if (screenPos.x <= EdgePanMargin) direction.x -= 1f;
+        else if (screenPos.x >= Screen.width - EdgePanMargin) direction.x += 1f;
+
+        if (screenPos.y <= EdgePanMargin) direction.y -= 1f;
+        else if (screenPos.y >= Screen.height - EdgePanMargin) direction.y += 1f;
+
+        if (direction != Vector2.zero)
+            Grid.CameraController.Pan(direction.normalized, EdgePanSpeed);
     }
 
     // ───────────────────────── 브러시 미리보기 ─────────────────────────
@@ -190,9 +243,9 @@ public class HexMapEditor : MonoBehaviour
             Vector3 c = cell.Position;
             for (int d = 0; d < 6; d++)
             {
-                Vector3 v1 = HexMetrics.Perturb(c);
-                Vector3 v2 = HexMetrics.Perturb(c + HexMetrics.Corners[d]);
-                Vector3 v3 = HexMetrics.Perturb(c + HexMetrics.Corners[d + 1]);
+                Vector3 v1 = c;
+                Vector3 v2 = c + HexMetrics.Corners[d];
+                Vector3 v3 = c + HexMetrics.Corners[d + 1];
                 v1.y += PreviewYOffset; v2.y += PreviewYOffset; v3.y += PreviewYOffset;
 
                 int idx = verts.Count;
@@ -224,7 +277,7 @@ public class HexMapEditor : MonoBehaviour
         GUILayout.BeginArea(new Rect(0, 0, AreaWidth, PanelHeight), GUI.skin.box);
 
         GUILayout.Label($"맵 에디터  ({Grid.CurrentWidth}×{Grid.CurrentHeight})", header);
-        GUILayout.Label("좌클릭 칠 · 우드래그 이동 · 휠 줌");
+        GUILayout.Label("좌클릭 칠 · 가장자리 자동 이동 · 우드래그 이동 · 휠 줌");
         GUILayout.Space(4);
 
         GUILayout.Label("지형  (숫자키 0~)");
@@ -240,13 +293,13 @@ public class HexMapEditor : MonoBehaviour
 
         GUILayout.Space(8);
 
-        GUILayout.Label("브러시 크기");
+        GUILayout.Label($"브러시 크기 (최대 {MaxBrushSize})");
         GUILayout.BeginHorizontal();
         if (GUILayout.Button("−", GUILayout.Width(30), GUILayout.Height(24)))
             brushSize = Mathf.Max(0, brushSize - 1);
         GUILayout.Label(brushSize.ToString(), GUILayout.Width(36));
         if (GUILayout.Button("+", GUILayout.Width(30), GUILayout.Height(24)))
-            brushSize = Mathf.Min(6, brushSize + 1);
+            brushSize = Mathf.Min(MaxBrushSize, brushSize + 1);
         GUILayout.EndHorizontal();
 
         GUILayout.Space(8);
@@ -262,7 +315,7 @@ public class HexMapEditor : MonoBehaviour
 
         GUILayout.Space(8);
 
-        GUILayout.Label("새 맵 크기 (W × H)");
+        GUILayout.Label($"새 맵 크기 (W × H, 최대 {MaxNewMapWidth}×{MaxNewMapHeight})");
         GUILayout.BeginHorizontal();
         widthText = GUILayout.TextField(widthText, GUILayout.Width(46), GUILayout.Height(22));
         GUILayout.Label("×", GUILayout.Width(14));
@@ -270,7 +323,7 @@ public class HexMapEditor : MonoBehaviour
         GUILayout.EndHorizontal();
         if (GUILayout.Button("새 맵 생성", GUILayout.Height(26)))
             if (int.TryParse(widthText, out int w) && int.TryParse(heightText, out int h))
-                Grid.CreateBlankMap(w, h);
+                Grid.CreateBlankMap(w, h, MaxNewMapWidth, MaxNewMapHeight);
 
         GUILayout.Space(10);
 
