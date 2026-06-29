@@ -469,6 +469,7 @@ MonoBehaviour:
   BorderColor: {r: 0.05, g: 0.04, b: 0.03, a: 1}
   BorderWidth: 1.5
   PaintLandOnly: 1
+  ProtectOtherProvinces: 1
   HeightScale: 0
   SurfaceSubdivisions: 1
 --- !u!4 &596827398

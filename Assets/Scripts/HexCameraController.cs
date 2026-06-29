@@ -65,12 +65,15 @@ public class HexCameraController : MonoBehaviour
         Apply();
     }
 
+    [Tooltip("켜져 있으면 이번 프레임 휠 줌/우드래그 팬을 무시한다. UI 패널 위에서 에디터가 매 프레임 세팅.")]
+    [System.NonSerialized] public bool BlockMouseOverUI;
+
     void Update()
     {
         if (Cam == null) { Cam = Camera.main; if (Cam == null) return; }
 
         var mouse = Mouse.current;
-        if (mouse != null)
+        if (mouse != null && !BlockMouseOverUI)   // 패널 위면 마우스 줌/팬 무시
         {
             float s = mouse.scroll.ReadValue().y;
             if (Mathf.Abs(s) > 0.01f)

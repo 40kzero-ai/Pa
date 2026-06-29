@@ -45,7 +45,8 @@ public class HexMapEditor : MonoBehaviour
     const float AreaWidth = 190f;
     const float OriginX = 12f;
     const float PanelTop = 12f;
-    const float PanelHeight = 720f;
+    const float PanelHeight = 560f;
+    const float ListHeight = 196f;   // 목록 스크롤 영역 높이(고정) — 항목이 많아도 이 안에서 스크롤
 
     int activeTerrain = 1;
     int brushSize = 1;
@@ -59,6 +60,11 @@ public class HexMapEditor : MonoBehaviour
     string heightText = "12";
 
     GUIStyle header;
+    GUIStyle content;            // 패널 콘텐츠 좌우 패딩(스크롤바와 균형)
+    Vector2 listScroll;          // (미사용 예약)
+    Vector2 panelScroll;         // 패널 전체 스크롤 위치
+    float lastPanelH;            // 이번 프레임 패널 높이(히트테스트용)
+    bool showFileSection = true; // 파일·설정 섹션 접기
 
     // 미리보기
     GameObject previewGO;
@@ -150,6 +156,10 @@ public class HexMapEditor : MonoBehaviour
         Mouse mouse = Mouse.current;
         if (mouse != null)
         {
+            // 패널 위에 커서가 있으면 카메라 휠 줌/우드래그 팬을 막는다(맵으로 새지 않게).
+            if (Grid.CameraController != null)
+                Grid.CameraController.BlockMouseOverUI = IsPointerOverPanel(mouse.position.ReadValue());
+
             if (mouse.leftButton.wasPressedThisFrame) { Grid.BeginStroke(paintMode); hasLastPaint = false; }
             if (mouse.leftButton.isPressed)
             {
@@ -174,7 +184,7 @@ public class HexMapEditor : MonoBehaviour
         return screenPos.x >= OriginX
             && screenPos.x <= OriginX + AreaWidth * UIScale
             && guiY >= PanelTop
-            && guiY <= PanelTop + PanelHeight * UIScale;
+            && guiY <= PanelTop + lastPanelH * UIScale;
     }
 
     // 1단계: 표면이 평면(y=0)이라 콜라이더 없이 수학 평면으로 클릭 지점을 구한다.
@@ -318,58 +328,71 @@ public class HexMapEditor : MonoBehaviour
 
         if (header == null)
             header = new GUIStyle(GUI.skin.label) { fontStyle = FontStyle.Bold };
+        if (content == null)
+            // 세로 스크롤바가 오른쪽 ~16px를 먹으므로, 왼쪽 패딩을 더 줘서 좌우 여백을 균형 맞춘다.
+            content = new GUIStyle { padding = new RectOffset(16, 4, 4, 4) };
 
         Matrix4x4 prev = GUI.matrix;
-        GUI.matrix = Matrix4x4.TRS(new Vector3(OriginX, PanelTop, 0f),
-                                   Quaternion.identity, Vector3.one * UIScale);
+        GUI.matrix = Matrix4x4.TRS(new Vector3(OriginX, PanelTop, 0f), Quaternion.identity, Vector3.one * UIScale);
 
-        GUILayout.BeginArea(new Rect(0, 0, AreaWidth, PanelHeight), GUI.skin.box);
+        // 패널 높이를 화면에 맞춰 제한(매트릭스 스케일 고려). 내용이 길면 패널 전체가 스크롤된다.
+        float availH = Screen.height / Mathf.Max(0.01f, UIScale) - PanelTop * 2f;
+        lastPanelH = Mathf.Clamp(PanelHeight, 200f, availH);
 
-        GUILayout.Label($"맵 에디터  ({Grid.CurrentWidth}×{Grid.CurrentHeight})", header);
-        GUILayout.Label("좌클릭 칠 · 가장자리 자동 이동 · 우드래그 이동 · 휠 줌");
-        GUILayout.Space(4);
+        GUILayout.BeginArea(new Rect(0, 0, AreaWidth, lastPanelH), GUI.skin.box);
+        // 가로 스크롤바 끄고, 세로는 항상 표시(레이아웃 일정하게)
+        panelScroll = GUILayout.BeginScrollView(panelScroll, false, true,
+            GUIStyle.none, GUI.skin.verticalScrollbar);
 
-        // 편집 모드 토글: 지형 / 프로빈스
-        GUILayout.BeginHorizontal();
-        if (GUILayout.Button(paintMode == HexGrid.EditChannel.Terrain ? "● 지형" : "○ 지형", GUILayout.Height(24)))
-            paintMode = HexGrid.EditChannel.Terrain;
-        if (GUILayout.Button(paintMode == HexGrid.EditChannel.Province ? "● 프로빈스" : "○ 프로빈스", GUILayout.Height(24)))
-            paintMode = HexGrid.EditChannel.Province;
-        GUILayout.EndHorizontal();
-        GUILayout.Space(4);
+        // 콘텐츠 좌우 패딩(스크롤바와 균형). 모든 항목이 이 안에 들어간다.
+        GUILayout.BeginVertical(content);
 
         Color prevBg = GUI.backgroundColor;
+
+        // ───── 헤더 · 모드 · 브러시 ─────
+        GUILayout.Label($"맵 에디터  ({Grid.CurrentWidth}×{Grid.CurrentHeight})", header);
+
+        GUILayout.BeginHorizontal();
+        if (GUILayout.Toggle(paintMode == HexGrid.EditChannel.Terrain, "지형", "button", GUILayout.Height(24)))
+            paintMode = HexGrid.EditChannel.Terrain;
+        if (GUILayout.Toggle(paintMode == HexGrid.EditChannel.Province, "프로빈스", "button", GUILayout.Height(24)))
+            paintMode = HexGrid.EditChannel.Province;
+        GUILayout.EndHorizontal();
+
+        GUILayout.Label($"브러시 {brushSize}   (1~{MaxBrushSize})");
+        brushSize = Mathf.RoundToInt(GUILayout.HorizontalSlider(brushSize, 1, MaxBrushSize, GUILayout.Height(16)));
+        GUILayout.Space(4);
+
+        // ───── 목록 (지형 / 프로빈스) — 패널 전체 스크롤에 포함 ─────
+        GUILayout.Label(paintMode == HexGrid.EditChannel.Terrain ? "지형  (숫자키 0~)" : $"프로빈스  ({Grid.ProvinceCount}개)");
         if (paintMode == HexGrid.EditChannel.Terrain)
         {
-            GUILayout.Label("지형  (숫자키 0~)");
             for (int i = 0; i < types.Length; i++)
             {
                 GUI.backgroundColor = ParseColor(types[i].color);
-                string mark = i == activeTerrain ? "●  " : "○  ";
-                if (GUILayout.Button(mark + i + "   " + types[i].id, GUILayout.Height(24)))
+                if (GUILayout.Button((i == activeTerrain ? "●  " : "○  ") + i + "   " + types[i].id, GUILayout.Height(24)))
                     activeTerrain = i;
             }
-            GUI.backgroundColor = prevBg;
         }
         else
         {
-            GUILayout.Label("프로빈스");
             int pc = Grid.ProvinceCount;
             for (int i = 0; i < pc; i++)
             {
                 GUI.backgroundColor = Grid.GetProvinceColor(i);
-                string mark = i == activeProvince ? "●  " : "○  ";
-                if (GUILayout.Button(mark + "프로빈스 " + i, GUILayout.Height(22)))
+                if (GUILayout.Button((i == activeProvince ? "●  " : "○  ") + "프로빈스 " + i, GUILayout.Height(22)))
                     activeProvince = i;
             }
-            GUI.backgroundColor = prevBg;
+        }
+        GUI.backgroundColor = prevBg;
 
+        // ───── 프로빈스 모드 액션 ─────
+        if (paintMode == HexGrid.EditChannel.Province)
+        {
             GUILayout.BeginHorizontal();
-            if (GUILayout.Button("+ 새 프로빈스", GUILayout.Height(22)))
-                activeProvince = Grid.AddProvince();
+            if (GUILayout.Button("+ 새 프로빈스", GUILayout.Height(22))) activeProvince = Grid.AddProvince();
             GUI.backgroundColor = activeProvince < 0 ? Color.white : prevBg;
-            if (GUILayout.Button(activeProvince < 0 ? "● 지우개" : "○ 지우개", GUILayout.Height(22)))
-                activeProvince = -1; // 무소속으로 칠하기
+            if (GUILayout.Button(activeProvince < 0 ? "● 지우개" : "○ 지우개", GUILayout.Height(22))) activeProvince = -1;
             GUI.backgroundColor = prevBg;
             GUILayout.EndHorizontal();
 
@@ -386,62 +409,44 @@ public class HexMapEditor : MonoBehaviour
             GUILayout.EndHorizontal();
         }
 
-        GUILayout.Space(8);
+        GUILayout.Space(6);
 
-        GUILayout.Label($"브러시 크기: {brushSize}  (1~{MaxBrushSize})");
-        brushSize = Mathf.RoundToInt(GUILayout.HorizontalSlider(brushSize, 1, MaxBrushSize, GUILayout.Height(18)));
-
-        GUILayout.Space(8);
-
-        GUILayout.Label("UI 크기");
-        GUILayout.BeginHorizontal();
-        if (GUILayout.Button("−", GUILayout.Width(30), GUILayout.Height(24)))
-            UIScale = Mathf.Max(1f, UIScale - 0.2f);
-        GUILayout.Label(UIScale.ToString("0.0"), GUILayout.Width(36));
-        if (GUILayout.Button("+", GUILayout.Width(30), GUILayout.Height(24)))
-            UIScale = Mathf.Min(3f, UIScale + 0.2f);
-        GUILayout.EndHorizontal();
-
-        GUILayout.Space(8);
-
-        GUILayout.Label($"새 맵 크기 (W × H, 최대 {MaxNewMapWidth}×{MaxNewMapHeight})");
-        GUILayout.BeginHorizontal();
-        widthText = GUILayout.TextField(widthText, GUILayout.Width(46), GUILayout.Height(22));
-        GUILayout.Label("×", GUILayout.Width(14));
-        heightText = GUILayout.TextField(heightText, GUILayout.Width(46), GUILayout.Height(22));
-        GUILayout.EndHorizontal();
-        if (GUILayout.Button("새 맵 생성", GUILayout.Height(26)))
-            if (int.TryParse(widthText, out int w) && int.TryParse(heightText, out int h))
-                Grid.CreateBlankMap(w, h, MaxNewMapWidth, MaxNewMapHeight);
-
-        GUILayout.Space(10);
-
-        GUILayout.Label("되돌리기");
-        GUILayout.BeginHorizontal();
-        GUI.enabled = Grid.CanUndo;
-        if (GUILayout.Button("↶ Ctrl+Z", GUILayout.Height(24))) Grid.Undo();
-        GUI.enabled = Grid.CanRedo;
-        if (GUILayout.Button("↷ Ctrl+Y", GUILayout.Height(24))) Grid.Redo();
-        GUI.enabled = true;
-        GUILayout.EndHorizontal();
-
-        GUILayout.Space(10);
-
-        GUILayout.BeginHorizontal();
-        if (GUILayout.Button("저장", GUILayout.Height(28)))
+        // ───── 파일·설정 (접기) ─────
+        showFileSection = GUILayout.Toggle(showFileSection, showFileSection ? "▼ 파일 · 설정" : "▶ 파일 · 설정", "button", GUILayout.Height(22));
+        if (showFileSection)
         {
-            Grid.SaveToFile(SavePath);
-            status = "저장됨";
-        }
-        if (GUILayout.Button("불러오기", GUILayout.Height(28)))
-        {
-            status = Grid.LoadFromFile(SavePath) ? "불러옴" : "저장 파일 없음";
-        }
-        GUILayout.EndHorizontal();
+            GUILayout.BeginHorizontal();
+            GUI.enabled = Grid.CanUndo; if (GUILayout.Button("↶ 되돌리기", GUILayout.Height(22))) Grid.Undo();
+            GUI.enabled = Grid.CanRedo; if (GUILayout.Button("↷ 다시", GUILayout.Height(22))) Grid.Redo();
+            GUI.enabled = true;
+            GUILayout.EndHorizontal();
 
-        if (!string.IsNullOrEmpty(status))
-            GUILayout.Label(status);
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button("저장", GUILayout.Height(24))) { Grid.SaveToFile(SavePath); status = "저장됨"; }
+            if (GUILayout.Button("불러오기", GUILayout.Height(24))) status = Grid.LoadFromFile(SavePath) ? "불러옴" : "저장 파일 없음";
+            GUILayout.EndHorizontal();
 
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("새 맵", GUILayout.Width(34));
+            widthText = GUILayout.TextField(widthText, GUILayout.Width(40), GUILayout.Height(20));
+            GUILayout.Label("×", GUILayout.Width(12));
+            heightText = GUILayout.TextField(heightText, GUILayout.Width(40), GUILayout.Height(20));
+            if (GUILayout.Button("생성", GUILayout.Height(20)))
+                if (int.TryParse(widthText, out int w) && int.TryParse(heightText, out int h))
+                    Grid.CreateBlankMap(w, h, MaxNewMapWidth, MaxNewMapHeight);
+            GUILayout.EndHorizontal();
+
+            GUILayout.BeginHorizontal();
+            GUILayout.Label($"UI {UIScale:0.0}", GUILayout.Width(54));
+            if (GUILayout.Button("−", GUILayout.Width(28), GUILayout.Height(20))) UIScale = Mathf.Max(1f, UIScale - 0.2f);
+            if (GUILayout.Button("+", GUILayout.Width(28), GUILayout.Height(20))) UIScale = Mathf.Min(3f, UIScale + 0.2f);
+            GUILayout.EndHorizontal();
+        }
+
+        if (!string.IsNullOrEmpty(status)) GUILayout.Label(status);
+
+        GUILayout.EndVertical();
+        GUILayout.EndScrollView();
         GUILayout.EndArea();
         GUI.matrix = prev;
     }
