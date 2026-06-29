@@ -43,6 +43,8 @@ public class HexMapEditor : MonoBehaviour
     public float EdgePanSpeed = 0.9f;
 
     const float AreaWidth = 190f;
+    const float ScrollbarGutter = 24f; // 스크롤바를 콘텐츠 오른쪽 바깥으로 밀어내는 여유 폭
+    const float PanelAreaWidth = AreaWidth + ScrollbarGutter;
     const float OriginX = 12f;
     const float PanelTop = 12f;
     const float PanelHeight = 560f;
@@ -182,7 +184,7 @@ public class HexMapEditor : MonoBehaviour
     {
         float guiY = Screen.height - screenPos.y; // 좌하단 → 좌상단 좌표
         return screenPos.x >= OriginX
-            && screenPos.x <= OriginX + AreaWidth * UIScale
+            && screenPos.x <= OriginX + PanelAreaWidth * UIScale
             && guiY >= PanelTop
             && guiY <= PanelTop + lastPanelH * UIScale;
     }
@@ -329,8 +331,8 @@ public class HexMapEditor : MonoBehaviour
         if (header == null)
             header = new GUIStyle(GUI.skin.label) { fontStyle = FontStyle.Bold };
         if (content == null)
-            // 세로 스크롤바가 오른쪽 ~16px를 먹으므로, 왼쪽 패딩을 더 줘서 좌우 여백을 균형 맞춘다.
-            content = new GUIStyle { padding = new RectOffset(16, 4, 4, 4) };
+            // 콘텐츠 안쪽 여백. 스크롤바는 별도 여유 폭으로 오른쪽에 배치한다.
+            content = new GUIStyle { padding = new RectOffset(16, 8, 4, 4) };
 
         Matrix4x4 prev = GUI.matrix;
         GUI.matrix = Matrix4x4.TRS(new Vector3(OriginX, PanelTop, 0f), Quaternion.identity, Vector3.one * UIScale);
@@ -339,13 +341,13 @@ public class HexMapEditor : MonoBehaviour
         float availH = Screen.height / Mathf.Max(0.01f, UIScale) - PanelTop * 2f;
         lastPanelH = Mathf.Clamp(PanelHeight, 200f, availH);
 
-        GUILayout.BeginArea(new Rect(0, 0, AreaWidth, lastPanelH), GUI.skin.box);
+        GUILayout.BeginArea(new Rect(0, 0, PanelAreaWidth, lastPanelH), GUI.skin.box);
         // 가로 스크롤바 끄고, 세로는 항상 표시(레이아웃 일정하게)
         panelScroll = GUILayout.BeginScrollView(panelScroll, false, true,
             GUIStyle.none, GUI.skin.verticalScrollbar);
 
-        // 콘텐츠 좌우 패딩(스크롤바와 균형). 모든 항목이 이 안에 들어간다.
-        GUILayout.BeginVertical(content);
+        // 콘텐츠 폭은 기존 크기로 유지하고, 스크롤바만 오른쪽 여유 공간으로 밀어낸다.
+        GUILayout.BeginVertical(content, GUILayout.Width(AreaWidth));
 
         Color prevBg = GUI.backgroundColor;
 
