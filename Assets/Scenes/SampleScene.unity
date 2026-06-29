@@ -276,7 +276,7 @@ MonoBehaviour:
   ZoomSizePower: 0.4
   ZoomReferenceExtent: 200
   ZoomFactorMin: 9.5
-  ZoomFactorMax: 1.8
+  ZoomFactorMax: 1.6
   DragPanSpeed: 0.001
   KeyPanSpeed: 0.7
   EnableKeyPan: 1
@@ -441,8 +441,8 @@ MonoBehaviour:
   UIScale: 1.8
   HighlightMaterial: {fileID: 2100000, guid: 6f39f4fa2e3b20e45afea11f119fc7db, type: 2}
   PreviewYOffset: 0.2
-  MaxNewMapWidth: 200
-  MaxNewMapHeight: 200
+  MaxNewMapWidth: 5000
+  MaxNewMapHeight: 5000
   MaxBrushSize: 20
   EnablePaintEdgePan: 1
   EdgePanMargin: 48
