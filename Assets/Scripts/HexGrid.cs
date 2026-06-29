@@ -48,6 +48,7 @@ public class HexGrid : MonoBehaviour
     public TerrainType[] TerrainTypes => data != null ? data.terrainTypes : null;
     public int CurrentWidth => data != null ? data.grid.width : 0;
     public int CurrentHeight => data != null ? data.grid.height : 0;
+    public int ProvinceEditVersion { get; private set; }
 
     // ── 되돌리기(지형/프로빈스 페인팅 단위) ──
     public enum EditChannel { Terrain, Province }
@@ -88,6 +89,7 @@ public class HexGrid : MonoBehaviour
         CreateSurface();      Mark("평면 메시");
         SetupMaterial();      Mark("머티리얼");
         FrameCamera();        Mark("카메라");
+        ProvinceEditVersion++;
 
         total.Stop();
         int w = data.grid.width, h = data.grid.height;
@@ -179,7 +181,11 @@ public class HexGrid : MonoBehaviour
             SetProvince(cell, provinceIndex);
             changed = true;
         }
-        if (changed) provinceTex.Apply(false);
+        if (changed)
+        {
+            provinceTex.Apply(false);
+            ProvinceEditVersion++;
+        }
     }
 
     // id가 "ocean"인 지형 인덱스(없으면 0). 캐시.
@@ -259,13 +265,26 @@ public class HexGrid : MonoBehaviour
             else SetProvince(ch.Cell, v);
         }
         if (entry.Channel == EditChannel.Terrain) terrainTex.Apply(false);
-        else provinceTex.Apply(false);
+        else
+        {
+            provinceTex.Apply(false);
+            ProvinceEditVersion++;
+        }
     }
 
     public List<HexCell> GetBrushCells(Vector3 worldPosition, int brushRadius)
     {
         HexCell center = GetCell(worldPosition);
         return center == null ? new List<HexCell>() : GetCellsInRange(center, brushRadius);
+    }
+
+    public List<HexCell> GetProvinceCells(int provinceIndex)
+    {
+        var result = new List<HexCell>();
+        if (cells == null || provinceIndex < 0) return result;
+        foreach (HexCell cell in cells)
+            if (cell.ProvinceIndex == provinceIndex) result.Add(cell);
+        return result;
     }
 
     // 반경 range 안의 셀을 모은다. BFS 대신 큐브(axial) 디스크 범위를 직접 순회해
@@ -420,6 +439,7 @@ public class HexGrid : MonoBehaviour
         if (string.IsNullOrEmpty(arr[n].color))
             arr[n].color = MakeUniqueProvinceColor(n, UsedColorKeys(n));
         RebuildProvincePalette();
+        ProvinceEditVersion++;
         return n;
     }
 
@@ -448,6 +468,7 @@ public class HexGrid : MonoBehaviour
         undoStack.Clear(); redoStack.Clear(); recording = false; strokeOld?.Clear();
         RebuildProvincePalette();
         if (provinceTex != null) UploadProvinceTex();
+        ProvinceEditVersion++;
         return true;
     }
 
@@ -614,6 +635,7 @@ public class HexGrid : MonoBehaviour
 
         RebuildProvincePalette();
         UploadProvinceTex();
+        ProvinceEditVersion++;
         RebindMaterialTextures();   // 머티리얼에 현재 텍스처/팔레트를 다시 물려 즉시 보이게
         if (cells != null) for (int i = 0; i < cells.Length; i++) cells[i].ProvinceIndex = data.provinceMap[i];
 

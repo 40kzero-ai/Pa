@@ -72,6 +72,11 @@ public class HexMapEditor : MonoBehaviour
     GameObject previewGO;
     MeshFilter previewFilter;
     Mesh previewMesh;
+    GameObject provinceHighlightGO;
+    MeshFilter provinceHighlightFilter;
+    Mesh provinceHighlightMesh;
+    int lastHighlightedProvince = int.MinValue;
+    int lastProvinceHighlightVersion = -1;
     HexCell lastCenter;
     int lastBrush = -1;
 
@@ -125,8 +130,21 @@ public class HexMapEditor : MonoBehaviour
         renderer.sharedMaterial = HighlightMaterial;
 
         previewMesh = new Mesh { name = "Brush Preview" };
+        previewMesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
         previewFilter.mesh = previewMesh;
         previewGO.SetActive(false);
+
+        provinceHighlightGO = new GameObject("SelectedProvinceHighlight");
+        provinceHighlightGO.transform.SetParent(Grid.transform, false);
+        provinceHighlightFilter = provinceHighlightGO.AddComponent<MeshFilter>();
+        var provinceHighlightRenderer = provinceHighlightGO.AddComponent<MeshRenderer>();
+        var provinceHighlightMaterial = new Material(HighlightMaterial) { color = new Color(1f, 0.9f, 0.15f, 0.28f) };
+        provinceHighlightRenderer.sharedMaterial = provinceHighlightMaterial;
+
+        provinceHighlightMesh = new Mesh { name = "Selected Province Highlight" };
+        provinceHighlightMesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
+        provinceHighlightFilter.mesh = provinceHighlightMesh;
+        provinceHighlightGO.SetActive(false);
     }
 
     void Update()
@@ -172,6 +190,7 @@ public class HexMapEditor : MonoBehaviour
             if (mouse.leftButton.wasReleasedThisFrame) { Grid.EndStroke(); hasLastPaint = false; }
         }
 
+        UpdateProvinceHighlight();
         UpdatePreview(mouse);
     }
 
@@ -296,6 +315,34 @@ public class HexMapEditor : MonoBehaviour
 
     void BuildPreview(List<HexCell> cells)
     {
+        BuildCellOverlayMesh(cells, previewMesh, PreviewYOffset);
+    }
+
+    void UpdateProvinceHighlight()
+    {
+        if (provinceHighlightGO == null || Grid == null) return;
+        if (paintMode != HexGrid.EditChannel.Province || activeProvince < 0 || activeProvince >= Grid.ProvinceCount)
+        {
+            provinceHighlightGO.SetActive(false);
+            lastHighlightedProvince = int.MinValue;
+            lastProvinceHighlightVersion = -1;
+            return;
+        }
+
+        if (activeProvince == lastHighlightedProvince && Grid.ProvinceEditVersion == lastProvinceHighlightVersion)
+        {
+            if (!provinceHighlightGO.activeSelf) provinceHighlightGO.SetActive(true);
+            return;
+        }
+
+        BuildCellOverlayMesh(Grid.GetProvinceCells(activeProvince), provinceHighlightMesh, PreviewYOffset * 0.5f);
+        lastHighlightedProvince = activeProvince;
+        lastProvinceHighlightVersion = Grid.ProvinceEditVersion;
+        provinceHighlightGO.SetActive(true);
+    }
+
+    void BuildCellOverlayMesh(List<HexCell> cells, Mesh mesh, float yOffset)
+    {
         var verts = new List<Vector3>();
         var tris = new List<int>();
 
@@ -307,7 +354,7 @@ public class HexMapEditor : MonoBehaviour
                 Vector3 v1 = c;
                 Vector3 v2 = c + HexMetrics.Corners[d];
                 Vector3 v3 = c + HexMetrics.Corners[d + 1];
-                v1.y += PreviewYOffset; v2.y += PreviewYOffset; v3.y += PreviewYOffset;
+                v1.y += yOffset; v2.y += yOffset; v3.y += yOffset;
 
                 int idx = verts.Count;
                 verts.Add(v1); verts.Add(v2); verts.Add(v3);
@@ -315,10 +362,10 @@ public class HexMapEditor : MonoBehaviour
             }
         }
 
-        previewMesh.Clear();
-        previewMesh.SetVertices(verts);
-        previewMesh.SetTriangles(tris, 0);
-        previewMesh.RecalculateBounds();
+        mesh.Clear();
+        mesh.SetVertices(verts);
+        mesh.SetTriangles(tris, 0);
+        mesh.RecalculateBounds();
     }
 
     // ───────────────────────── UI ─────────────────────────
