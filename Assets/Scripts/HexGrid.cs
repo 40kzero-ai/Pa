@@ -423,6 +423,34 @@ public class HexGrid : MonoBehaviour
         return n;
     }
 
+    /// <summary>프로빈스를 제거하고, 셀의 표시 인덱스와 텍스처를 즉시 갱신한다.</summary>
+    public bool RemoveProvince(int index)
+    {
+        int n = ProvinceCount;
+        if (data?.provinces == null || index < 0 || index >= n) return false;
+
+        var arr = new ProvinceInfo[n - 1];
+        if (index > 0) System.Array.Copy(data.provinces, 0, arr, 0, index);
+        if (index < n - 1) System.Array.Copy(data.provinces, index + 1, arr, index, n - index - 1);
+        data.provinces = arr;
+
+        EnsureProvinceMap();
+        int len = data.grid.width * data.grid.height;
+        for (int i = 0; i < len; i++)
+        {
+            int p = data.provinceMap[i];
+            if (p == index) p = -1;
+            else if (p > index) p--;
+            data.provinceMap[i] = p;
+            if (cells != null && i < cells.Length) cells[i].ProvinceIndex = p;
+        }
+
+        undoStack.Clear(); redoStack.Clear(); recording = false; strokeOld?.Clear();
+        RebuildProvincePalette();
+        if (provinceTex != null) UploadProvinceTex();
+        return true;
+    }
+
     // 비어 있는 프로빈스 표시색을, 다른 프로빈스·검정과 겹치지 않게 채운다.
     void EnsureProvinceColors()
     {

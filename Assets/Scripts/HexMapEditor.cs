@@ -43,7 +43,7 @@ public class HexMapEditor : MonoBehaviour
     public float EdgePanSpeed = 0.9f;
 
     const float AreaWidth = 220f;
-    const float ScrollbarGutter = 40f; // 스크롤바를 콘텐츠 오른쪽 바깥으로 더 밀어내는 여유 폭
+    const float ScrollbarGutter = 20f; // 스크롤바를 콘텐츠 오른쪽 바깥으로 밀어내는 여유 폭
     const float PanelAreaWidth = AreaWidth + ScrollbarGutter;
     const float OriginX = 12f;
     const float PanelTop = 12f;
@@ -395,6 +395,21 @@ public class HexMapEditor : MonoBehaviour
         {
             GUILayout.BeginHorizontal();
             if (GUILayout.Button("+ 새 프로빈스", GUILayout.Height(22))) activeProvince = Grid.AddProvince();
+            GUI.enabled = activeProvince >= 0 && activeProvince < Grid.ProvinceCount;
+            if (GUILayout.Button("- 선택 제거", GUILayout.Height(22)))
+            {
+                int removed = activeProvince;
+                if (Grid.RemoveProvince(removed))
+                {
+                    int pcAfter = Grid.ProvinceCount;
+                    activeProvince = pcAfter > 0 ? Mathf.Min(removed, pcAfter - 1) : -1;
+                    status = $"프로빈스 {removed} 제거됨";
+                }
+            }
+            GUI.enabled = true;
+            GUILayout.EndHorizontal();
+
+            GUILayout.BeginHorizontal();
             GUI.backgroundColor = activeProvince < 0 ? Color.white : prevBg;
             if (GUILayout.Button(activeProvince < 0 ? "● 지우개" : "○ 지우개", GUILayout.Height(22))) activeProvince = -1;
             GUI.backgroundColor = prevBg;
