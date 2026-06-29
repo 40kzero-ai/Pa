@@ -23,6 +23,8 @@ public class HexMapEditor : MonoBehaviour
 
     const float AreaWidth = 190f;
     const float OriginX = 12f;
+    const float PanelTop = 12f;
+    const float PanelHeight = 610f;
 
     int activeTerrain = 1;
     int brushSize = 0;
@@ -114,9 +116,23 @@ public class HexMapEditor : MonoBehaviour
         UpdatePreview(mouse);
     }
 
+    /// <summary>
+    /// 포인터가 좌측 UI 패널의 실제 사각형 안에 있는지 판정한다.
+    /// OnGUI는 좌상단 원점, 새 Input System의 마우스는 좌하단 원점이라 y를 변환한다.
+    /// 패널 아래쪽 빈 공간에서는 false → 거기서도 정상적으로 칠할 수 있다.
+    /// </summary>
+    bool IsPointerOverPanel(Vector2 screenPos)
+    {
+        float guiY = Screen.height - screenPos.y; // 좌하단 → 좌상단 좌표
+        return screenPos.x >= OriginX
+            && screenPos.x <= OriginX + AreaWidth * UIScale
+            && guiY >= PanelTop
+            && guiY <= PanelTop + PanelHeight * UIScale;
+    }
+
     void TryPaint(Vector2 screenPos)
     {
-        if (screenPos.x < OriginX + AreaWidth * UIScale) return; // 패널 위 클릭 무시
+        if (IsPointerOverPanel(screenPos)) return; // 패널 위 클릭만 무시(그 아래 빈 공간은 칠 가능)
 
         Camera cam = Camera.main;
         if (cam == null) return;
@@ -134,7 +150,7 @@ public class HexMapEditor : MonoBehaviour
         if (Grid.TerrainTypes == null) { HidePreview(); return; } // 아직 빌드 전
 
         Vector2 screenPos = mouse.position.ReadValue();
-        if (screenPos.x < OriginX + AreaWidth * UIScale) { HidePreview(); return; }
+        if (IsPointerOverPanel(screenPos)) { HidePreview(); return; }
 
         Camera cam = Camera.main;
         if (cam == null) { HidePreview(); return; }
@@ -202,10 +218,10 @@ public class HexMapEditor : MonoBehaviour
             header = new GUIStyle(GUI.skin.label) { fontStyle = FontStyle.Bold };
 
         Matrix4x4 prev = GUI.matrix;
-        GUI.matrix = Matrix4x4.TRS(new Vector3(OriginX, 12f, 0f),
+        GUI.matrix = Matrix4x4.TRS(new Vector3(OriginX, PanelTop, 0f),
                                    Quaternion.identity, Vector3.one * UIScale);
 
-        GUILayout.BeginArea(new Rect(0, 0, AreaWidth, 610), GUI.skin.box);
+        GUILayout.BeginArea(new Rect(0, 0, AreaWidth, PanelHeight), GUI.skin.box);
 
         GUILayout.Label($"맵 에디터  ({Grid.CurrentWidth}×{Grid.CurrentHeight})", header);
         GUILayout.Label("좌클릭 칠 · 우드래그 이동 · 휠 줌");

@@ -1,7 +1,48 @@
 // 메시의 정점 컬러(per-vertex color)를 그대로 출력하는 가장 단순한 Unlit 셰이더.
-// Built-in 렌더 파이프라인용. (URP를 쓴다면 아래 README의 안내대로 Shader Graph로 대체)
+// URP / Built-in 양쪽을 모두 지원한다. Unity가 활성 파이프라인에 맞는 SubShader를
+// 자동 선택하므로, 어떤 파이프라인에서도 자홍색(magenta)으로 깨지지 않는다.
 Shader "Custom/VertexColorUnlit"
 {
+    // ── URP용 SubShader (RenderPipeline 태그로 URP에서 우선 선택됨) ──
+    SubShader
+    {
+        Tags { "RenderType" = "Opaque" "RenderPipeline" = "UniversalPipeline" }
+        Pass
+        {
+            HLSLPROGRAM
+            #pragma vertex vert
+            #pragma fragment frag
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+
+            struct Attributes
+            {
+                float4 positionOS : POSITION;
+                half4  color      : COLOR;
+            };
+
+            struct Varyings
+            {
+                float4 positionHCS : SV_POSITION;
+                half4  color       : COLOR;
+            };
+
+            Varyings vert(Attributes IN)
+            {
+                Varyings OUT;
+                OUT.positionHCS = TransformObjectToHClip(IN.positionOS.xyz);
+                OUT.color = IN.color;
+                return OUT;
+            }
+
+            half4 frag(Varyings IN) : SV_Target
+            {
+                return IN.color;
+            }
+            ENDHLSL
+        }
+    }
+
+    // ── Built-in RP용 SubShader (URP가 없을 때 사용) ──
     SubShader
     {
         Tags { "RenderType" = "Opaque" }

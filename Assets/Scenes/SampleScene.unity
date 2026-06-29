@@ -448,7 +448,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b6e1054608bc41041bad853b63c8a486, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::HexGrid
-  GeometryJson: {fileID: 4900000, guid: 7e25be70fa4e11646a15776891ef3912, type: 3}
+  GeometryJson: {fileID: 4900000, guid: 3235a8baef1446c45aabcb2157b66e1c, type: 3}
   TerrainMaterial: {fileID: 2100000, guid: 3ef3494e26614d54cb647dbe2c93ba42, type: 2}
   CameraController: {fileID: 330585548}
   AutoFrameCamera: 1

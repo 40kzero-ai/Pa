@@ -45,7 +45,7 @@ public class HexGrid : MonoBehaviour
     void Start()
     {
         if (CameraController == null)
-            CameraController = FindObjectOfType<HexCameraController>();
+            CameraController = FindFirstObjectByType<HexCameraController>();
 
         if (GeometryJson == null)
         {
