@@ -28,7 +28,4 @@ public class HexCell
     public int Elevation;          // 고도
     public int ProvinceIndex = -1; // 소속 프로빈스 인덱스 (-1이면 없음)
     public Color Color = Color.gray; // (호환용, 렌더링엔 미사용 — 색은 텍스처가 담당)
-
-    // 이 셀이 속한 청크.
-    public HexChunk Chunk;
 }

@@ -11,16 +11,15 @@ using UnityEngine.InputSystem; // 새 Input System
 /// - 좌측 패널: 지형 견본, 브러시 크기, UI 크기(±), 새 맵 생성(W×H), 저장
 /// (카메라 줌/이동은 HexCameraController가 담당: 휠 줌, 우드래그 팬)
 ///
-/// 클릭 지점은 청크 MeshCollider에 대한 Physics.Raycast로 구한다. 콜라이더는 고도가 반영된
-/// 실제 지형 메시를 따라가므로 heightmap을 써도 피킹이 정확하다. (콜라이더는 맵/고도 변경 시에만
-/// 재생성되고, 색 페인팅은 텍스처 픽셀만 갱신하므로 콜라이더 재쿠킹이 일어나지 않는다.)
+/// 클릭 지점은 y=0 평면 레이캐스트로 구한다(1단계는 평면). 3단계에서 하이트맵 고도가
+/// 들어가면 높이 기반 피킹으로 교체한다.
 /// </summary>
 public class HexMapEditor : MonoBehaviour
 {
     public HexGrid Grid;
 
     [Tooltip("UI 패널 배율. 패널의 ± 버튼으로도 조절.")]
-    [Range(1f, 3f)] public float UIScale = 1.8f;
+    [Range(1f, 3f)] public float UIScale = 1.4f;
 
     [Tooltip("브러시 미리보기 머티리얼. 비우면 Custom/HexHighlight로 자동 생성.")]
     public Material HighlightMaterial;
@@ -31,7 +30,9 @@ public class HexMapEditor : MonoBehaviour
     [Min(1)] public int MaxNewMapHeight = 200;
 
     [Header("브러시 설정")]
-    [Min(0)] public int MaxBrushSize = 20;
+    [Min(1)] public int MaxBrushSize = 30;
+    [Tooltip("이 크기를 넘는 브러시는 미리보기(반투명 영역)를 생략해 렉을 막는다.")]
+    [Min(0)] public int PreviewMaxBrush = 30;
 
     [Header("화면 가장자리 자동 이동")]
     [Tooltip("좌클릭으로 칠하는 중 마우스가 화면 가장자리에 가까워지면 카메라를 자동 이동합니다.")]
@@ -44,10 +45,16 @@ public class HexMapEditor : MonoBehaviour
     const float AreaWidth = 190f;
     const float OriginX = 12f;
     const float PanelTop = 12f;
-    const float PanelHeight = 610f;
+    const float PanelHeight = 720f;
 
     int activeTerrain = 1;
-    int brushSize = 0;
+    int brushSize = 1;
+    HexGrid.EditChannel paintMode = HexGrid.EditChannel.Terrain;
+    int activeProvince = 0; // -1 = 무소속(지우개)
+
+    // 드래그 보간용
+    Vector3 lastPaintPos;
+    bool hasLastPaint;
     string widthText = "16";
     string heightText = "12";
 
@@ -62,6 +69,7 @@ public class HexMapEditor : MonoBehaviour
 
     string status = "";
     string SavePath => System.IO.Path.Combine(Application.persistentDataPath, "edited_geometry.json");
+    string ProvincePngPath => System.IO.Path.Combine(Application.persistentDataPath, "provinces.png");
 
     static readonly Key[] DigitKeys =
     {
@@ -85,7 +93,7 @@ public class HexMapEditor : MonoBehaviour
         MaxNewMapWidth = Mathf.Max(1, MaxNewMapWidth);
         MaxNewMapHeight = Mathf.Max(1, MaxNewMapHeight);
         MaxBrushSize = Mathf.Max(0, MaxBrushSize);
-        brushSize = Mathf.Clamp(brushSize, 0, MaxBrushSize);
+        brushSize = Mathf.Clamp(brushSize, 1, MaxBrushSize);
     }
 
     void SetupPreview()
@@ -142,14 +150,14 @@ public class HexMapEditor : MonoBehaviour
         Mouse mouse = Mouse.current;
         if (mouse != null)
         {
-            if (mouse.leftButton.wasPressedThisFrame) Grid.BeginStroke();
+            if (mouse.leftButton.wasPressedThisFrame) { Grid.BeginStroke(paintMode); hasLastPaint = false; }
             if (mouse.leftButton.isPressed)
             {
                 Vector2 screenPos = mouse.position.ReadValue();
                 TryPaint(screenPos);
                 TryEdgePanWhilePainting(screenPos);
             }
-            if (mouse.leftButton.wasReleasedThisFrame) Grid.EndStroke();
+            if (mouse.leftButton.wasReleasedThisFrame) { Grid.EndStroke(); hasLastPaint = false; }
         }
 
         UpdatePreview(mouse);
@@ -169,8 +177,11 @@ public class HexMapEditor : MonoBehaviour
             && guiY <= PanelTop + PanelHeight * UIScale;
     }
 
-    /// <summary>화면 좌표에서 청크 MeshCollider로 레이캐스트해 월드 지점을 구한다. 실패 시 false.
-    /// 콜라이더가 실제 지형(고도 포함)을 따라가므로 heightmap을 써도 피킹이 정확하다.</summary>
+    // 1단계: 표면이 평면(y=0)이라 콜라이더 없이 수학 평면으로 클릭 지점을 구한다.
+    // (3단계에서 하이트맵 고도가 들어가면 높이 기반 피킹으로 교체)
+    static readonly Plane GroundPlane = new Plane(Vector3.up, Vector3.zero);
+
+    /// <summary>화면 좌표 → y=0 평면 교차점. 실패 시 false.</summary>
     bool TryGetGroundPoint(Vector2 screenPos, out Vector3 point)
     {
         point = default;
@@ -178,18 +189,42 @@ public class HexMapEditor : MonoBehaviour
         if (cam == null) return false;
 
         Ray ray = cam.ScreenPointToRay(screenPos);
-        if (!Physics.Raycast(ray, out RaycastHit hit)) return false;
+        if (!GroundPlane.Raycast(ray, out float enter)) return false;
 
-        point = hit.point;
+        point = ray.GetPoint(enter);
         return true;
     }
 
     void TryPaint(Vector2 screenPos)
     {
         if (IsPointerOverPanel(screenPos)) return; // 패널 위 클릭만 무시(그 아래 빈 공간은 칠 가능)
+        if (!TryGetGroundPoint(screenPos, out Vector3 point)) return;
 
-        if (TryGetGroundPoint(screenPos, out Vector3 point))
+        if (!hasLastPaint)
+        {
+            Stamp(point);
+            lastPaintPos = point;
+            hasLastPaint = true;
+        }
+        else
+        {
+            // 이전 지점 → 현재 지점 사이를 보간해 칠한다(빠르게 그어도 씹히지 않음).
+            float cellW = HexMetrics.InnerRadius * 2f;
+            float step = Mathf.Max(cellW * 0.5f, brushSize * cellW * 0.75f); // 브러시가 클수록 큰 간격
+            float dist = Vector3.Distance(lastPaintPos, point);
+            int steps = Mathf.Clamp(Mathf.CeilToInt(dist / step), 1, 256);
+            for (int i = 1; i <= steps; i++)
+                Stamp(Vector3.Lerp(lastPaintPos, point, (float)i / steps));
+            lastPaintPos = point;
+        }
+    }
+
+    void Stamp(Vector3 point)
+    {
+        if (paintMode == HexGrid.EditChannel.Terrain)
             Grid.PaintAt(point, activeTerrain, brushSize);
+        else
+            Grid.PaintProvinceAt(point, activeProvince, brushSize);
     }
 
     void TryEdgePanWhilePainting(Vector2 screenPos)
@@ -224,6 +259,9 @@ public class HexMapEditor : MonoBehaviour
 
         HexCell center = Grid.GetCell(point);
         if (center == null) { HidePreview(); return; }
+
+        // 큰 브러시는 미리보기 메시(범위 내 모든 셀)가 무거워 렉을 유발 → 일정 크기 이상이면 미리보기 생략
+        if (brushSize > PreviewMaxBrush) { HidePreview(); return; }
 
         if (center == lastCenter && brushSize == lastBrush)
         {
@@ -291,27 +329,67 @@ public class HexMapEditor : MonoBehaviour
         GUILayout.Label("좌클릭 칠 · 가장자리 자동 이동 · 우드래그 이동 · 휠 줌");
         GUILayout.Space(4);
 
-        GUILayout.Label("지형  (숫자키 0~)");
+        // 편집 모드 토글: 지형 / 프로빈스
+        GUILayout.BeginHorizontal();
+        if (GUILayout.Button(paintMode == HexGrid.EditChannel.Terrain ? "● 지형" : "○ 지형", GUILayout.Height(24)))
+            paintMode = HexGrid.EditChannel.Terrain;
+        if (GUILayout.Button(paintMode == HexGrid.EditChannel.Province ? "● 프로빈스" : "○ 프로빈스", GUILayout.Height(24)))
+            paintMode = HexGrid.EditChannel.Province;
+        GUILayout.EndHorizontal();
+        GUILayout.Space(4);
+
         Color prevBg = GUI.backgroundColor;
-        for (int i = 0; i < types.Length; i++)
+        if (paintMode == HexGrid.EditChannel.Terrain)
         {
-            GUI.backgroundColor = ParseColor(types[i].color);
-            string mark = i == activeTerrain ? "●  " : "○  ";
-            if (GUILayout.Button(mark + i + "   " + types[i].id, GUILayout.Height(24)))
-                activeTerrain = i;
+            GUILayout.Label("지형  (숫자키 0~)");
+            for (int i = 0; i < types.Length; i++)
+            {
+                GUI.backgroundColor = ParseColor(types[i].color);
+                string mark = i == activeTerrain ? "●  " : "○  ";
+                if (GUILayout.Button(mark + i + "   " + types[i].id, GUILayout.Height(24)))
+                    activeTerrain = i;
+            }
+            GUI.backgroundColor = prevBg;
         }
-        GUI.backgroundColor = prevBg;
+        else
+        {
+            GUILayout.Label("프로빈스");
+            int pc = Grid.ProvinceCount;
+            for (int i = 0; i < pc; i++)
+            {
+                GUI.backgroundColor = Grid.GetProvinceColor(i);
+                string mark = i == activeProvince ? "●  " : "○  ";
+                if (GUILayout.Button(mark + "프로빈스 " + i, GUILayout.Height(22)))
+                    activeProvince = i;
+            }
+            GUI.backgroundColor = prevBg;
+
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button("+ 새 프로빈스", GUILayout.Height(22)))
+                activeProvince = Grid.AddProvince();
+            GUI.backgroundColor = activeProvince < 0 ? Color.white : prevBg;
+            if (GUILayout.Button(activeProvince < 0 ? "● 지우개" : "○ 지우개", GUILayout.Height(22)))
+                activeProvince = -1; // 무소속으로 칠하기
+            GUI.backgroundColor = prevBg;
+            GUILayout.EndHorizontal();
+
+            if (GUILayout.Button(Grid.PaintLandOnly ? "☑ 육지에만 칠하기" : "☐ 육지에만 칠하기", GUILayout.Height(22)))
+                Grid.PaintLandOnly = !Grid.PaintLandOnly;
+            if (GUILayout.Button(Grid.ProtectOtherProvinces ? "☑ 다른 프로빈스 보호" : "☐ 다른 프로빈스 보호", GUILayout.Height(22)))
+                Grid.ProtectOtherProvinces = !Grid.ProtectOtherProvinces;
+
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button("PNG 저장", GUILayout.Height(22)))
+            { Grid.SaveProvincePNG(ProvincePngPath); status = "프로빈스 PNG 저장됨"; }
+            if (GUILayout.Button("PNG 불러오기", GUILayout.Height(22)))
+            { status = Grid.LoadProvincePNG(ProvincePngPath) ? "프로빈스 PNG 불러옴" : "PNG 없음/크기불일치"; }
+            GUILayout.EndHorizontal();
+        }
 
         GUILayout.Space(8);
 
-        GUILayout.Label($"브러시 크기 (최대 {MaxBrushSize})");
-        GUILayout.BeginHorizontal();
-        if (GUILayout.Button("−", GUILayout.Width(30), GUILayout.Height(24)))
-            brushSize = Mathf.Max(0, brushSize - 1);
-        GUILayout.Label(brushSize.ToString(), GUILayout.Width(36));
-        if (GUILayout.Button("+", GUILayout.Width(30), GUILayout.Height(24)))
-            brushSize = Mathf.Min(MaxBrushSize, brushSize + 1);
-        GUILayout.EndHorizontal();
+        GUILayout.Label($"브러시 크기: {brushSize}  (1~{MaxBrushSize})");
+        brushSize = Mathf.RoundToInt(GUILayout.HorizontalSlider(brushSize, 1, MaxBrushSize, GUILayout.Height(18)));
 
         GUILayout.Space(8);
 

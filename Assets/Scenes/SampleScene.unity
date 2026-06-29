@@ -438,12 +438,13 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::HexMapEditor
   Grid: {fileID: 596827397}
-  UIScale: 1.8
+  UIScale: 1.4
   HighlightMaterial: {fileID: 2100000, guid: 6f39f4fa2e3b20e45afea11f119fc7db, type: 2}
   PreviewYOffset: 0.2
   MaxNewMapWidth: 5000
   MaxNewMapHeight: 5000
-  MaxBrushSize: 20
+  MaxBrushSize: 30
+  PreviewMaxBrush: 31
   EnablePaintEdgePan: 1
   EdgePanMargin: 48
   EdgePanSpeed: 2
@@ -460,13 +461,16 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::HexGrid
   GeometryJson: {fileID: 4900000, guid: 3235a8baef1446c45aabcb2157b66e1c, type: 3}
-  TerrainMaterial: {fileID: 2100000, guid: 1c1c4b88da3317d44869d8c0f65ac8c2, type: 2}
+  TerrainMaterial: {fileID: 2100000, guid: d54aac551066f404183ff47a31aa0955, type: 2}
   CameraController: {fileID: 330585548}
   AutoFrameCamera: 1
+  ProvinceTint: 0.75
+  ShowBorders: 1
+  BorderColor: {r: 0.05, g: 0.04, b: 0.03, a: 1}
+  BorderWidth: 1.5
+  PaintLandOnly: 1
   HeightScale: 0
-  ChunkSizeX: 32
-  ChunkSizeZ: 32
-  ChunksPerFrame: 64
+  SurfaceSubdivisions: 1
 --- !u!4 &596827398
 Transform:
   m_ObjectHideFlags: 0

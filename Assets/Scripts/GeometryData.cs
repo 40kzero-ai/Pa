@@ -5,8 +5,6 @@ using System;
 ///
 /// 주의: Unity의 JsonUtility는 2차원·가변 배열(string[][])과 최상위 배열을 지원하지 않는다.
 /// 그래서 terrain 같은 격자 데이터는 width*height 길이의 1차원 배열(row-major)로 저장한다.
-/// 중첩 배열이나 더 풍부한 스키마가 필요하면
-/// Newtonsoft.Json(패키지: com.unity.nuget.newtonsoft-json)으로 교체하면 된다.
 /// </summary>
 [Serializable]
 public class GeometryData
@@ -39,4 +37,5 @@ public class ProvinceInfo
 {
     public string id;
     public string nameKey;
+    public string color; // "RRGGBB" 표시색 = PNG 색=ID. 비어 있으면 인덱스로 자동 생성.
 }
