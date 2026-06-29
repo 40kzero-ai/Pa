@@ -24,7 +24,7 @@
 - **칠하는 중 화면 가장자리 접근**: 카메라 자동 이동
 - **숫자키 0~**: 지형 선택 (0 ocean, 1 plains, 2 forest, 3 hills, 4 mountain)
 - **좌측 패널**: 버튼으로 지형 선택 + "맵 저장(JSON)" 버튼
-- **HexMapEditor 인스펙터**: 새 맵 생성 최대 크기(`Max New Map Width/Height`) 조절
+- **HexMapEditor 인스펙터**: 새 맵 생성 최대 크기(`Max New Map Width/Height`)와 최대 브러시 크기(`Max Brush Size`) 조절
 
 ## 동작 원리 (요약)
 

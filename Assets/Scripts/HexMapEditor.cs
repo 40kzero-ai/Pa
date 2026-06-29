@@ -26,6 +26,9 @@ public class HexMapEditor : MonoBehaviour
     [Min(1)] public int MaxNewMapWidth = 200;
     [Min(1)] public int MaxNewMapHeight = 200;
 
+    [Header("브러시 설정")]
+    [Min(0)] public int MaxBrushSize = 20;
+
     [Header("화면 가장자리 자동 이동")]
     [Tooltip("좌클릭으로 칠하는 중 마우스가 화면 가장자리에 가까워지면 카메라를 자동 이동합니다.")]
     public bool EnablePaintEdgePan = true;
@@ -77,6 +80,8 @@ public class HexMapEditor : MonoBehaviour
     {
         MaxNewMapWidth = Mathf.Max(1, MaxNewMapWidth);
         MaxNewMapHeight = Mathf.Max(1, MaxNewMapHeight);
+        MaxBrushSize = Mathf.Max(0, MaxBrushSize);
+        brushSize = Mathf.Clamp(brushSize, 0, MaxBrushSize);
     }
 
     void SetupPreview()
@@ -288,13 +293,13 @@ public class HexMapEditor : MonoBehaviour
 
         GUILayout.Space(8);
 
-        GUILayout.Label("브러시 크기");
+        GUILayout.Label($"브러시 크기 (최대 {MaxBrushSize})");
         GUILayout.BeginHorizontal();
         if (GUILayout.Button("−", GUILayout.Width(30), GUILayout.Height(24)))
             brushSize = Mathf.Max(0, brushSize - 1);
         GUILayout.Label(brushSize.ToString(), GUILayout.Width(36));
         if (GUILayout.Button("+", GUILayout.Width(30), GUILayout.Height(24)))
-            brushSize = Mathf.Min(6, brushSize + 1);
+            brushSize = Mathf.Min(MaxBrushSize, brushSize + 1);
         GUILayout.EndHorizontal();
 
         GUILayout.Space(8);

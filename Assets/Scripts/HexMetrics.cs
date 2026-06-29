@@ -9,10 +9,6 @@ public static class HexMetrics
     public const float OuterRadius = 10f;                         // 중심 → 꼭짓점
     public const float InnerRadius = OuterRadius * 0.866025404f;  // 중심 → 변의 중점 (= OuterRadius * √3/2)
 
-    // 청크 한 칸이 담는 셀 개수 (이 단위로 메시를 나눠 부분 갱신을 가능하게 함)
-    public const int ChunkSizeX = 5;
-    public const int ChunkSizeZ = 5;
-
     // pointy-top 헥스의 6개 꼭짓점. 마지막에 0번을 한 번 더 넣어 인덱스 래핑을 피한다.
     public static readonly Vector3[] Corners =
     {

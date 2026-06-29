@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 /// <summary>
 /// 셀의 한 묶음(청크)을 받아 헥스 메시로 삼각형화한다.
@@ -18,7 +19,7 @@ public class HexChunk : MonoBehaviour
 
     void Awake()
     {
-        mesh = new Mesh { name = "Hex Chunk Mesh" };
+        mesh = new Mesh { name = "Hex Chunk Mesh", indexFormat = IndexFormat.UInt32 };
         GetComponent<MeshFilter>().mesh = mesh;
         meshCollider = GetComponent<MeshCollider>();
     }
