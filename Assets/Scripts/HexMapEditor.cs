@@ -14,6 +14,10 @@ public class HexMapEditor : MonoBehaviour
 {
     public HexGrid Grid;
 
+    [Header("Startup")]
+    public bool AutoCreateGameFlow = true;
+    public bool StartInEditorMode = false;
+
     [Tooltip("Brush preview material. If empty, Custom/HexHighlight is used.")]
     public Material HighlightMaterial;
     public float PreviewYOffset = 0.2f;
@@ -76,13 +80,21 @@ public class HexMapEditor : MonoBehaviour
     public int ProvinceCount => Grid != null ? Grid.ProvinceCount : 0;
     public bool CanUndo => Grid != null && Grid.CanUndo;
     public bool CanRedo => Grid != null && Grid.CanRedo;
+    public bool IsEditorModeActive { get; private set; }
+
+    void Awake()
+    {
+        if (AutoCreateGameFlow && GetComponent<HexGameFlow>() == null)
+            gameObject.AddComponent<HexGameFlow>();
+    }
 
     void Start()
     {
         ClampNewMapLimits();
         if (Grid == null) Grid = FindFirstObjectByType<HexGrid>();
         if (Grid != null) SetupPreview();
-        EnsureObjectUi();
+        if (StartInEditorMode) EnterEditorMode();
+        else ExitEditorMode();
         NotifyStateChanged();
     }
 
@@ -161,6 +173,11 @@ public class HexMapEditor : MonoBehaviour
     void Update()
     {
         if (Grid == null) return;
+        if (!IsEditorModeActive)
+        {
+            if (Grid.CameraController != null) Grid.CameraController.BlockMouseOverUI = false;
+            return;
+        }
 
         ClampSelections();
         HandleKeyboard();
@@ -626,5 +643,31 @@ public class HexMapEditor : MonoBehaviour
         if (string.IsNullOrEmpty(hex)) return Color.gray;
         if (!hex.StartsWith("#")) hex = "#" + hex;
         return ColorUtility.TryParseHtmlString(hex, out Color c) ? c : Color.gray;
+    }
+
+    public void EnterEditorMode()
+    {
+        IsEditorModeActive = true;
+        EnsureObjectUi();
+        HexMapEditorUI ui = GetComponent<HexMapEditorUI>();
+        if (ui != null)
+        {
+            ui.enabled = true;
+            ui.Bind(this);
+        }
+        NotifyStateChanged();
+    }
+
+    public void ExitEditorMode()
+    {
+        IsEditorModeActive = false;
+        HidePreview();
+        if (provinceHighlightGO != null) provinceHighlightGO.SetActive(false);
+        if (provinceBorderGO != null) provinceBorderGO.SetActive(false);
+        if (Grid != null && Grid.CameraController != null) Grid.CameraController.BlockMouseOverUI = false;
+
+        HexMapEditorUI ui = GetComponent<HexMapEditorUI>();
+        if (ui != null) ui.enabled = false;
+        NotifyStateChanged();
     }
 }

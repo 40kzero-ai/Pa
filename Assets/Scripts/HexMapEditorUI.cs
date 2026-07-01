@@ -74,12 +74,14 @@ public class HexMapEditorUI : MonoBehaviour
     void OnEnable()
     {
         Subscribe();
-        Build();
+        if (root != null) root.SetActive(true);
+        else Build();
     }
 
     void OnDisable()
     {
         Unsubscribe();
+        if (root != null) root.SetActive(false);
     }
 
     void OnDestroy()
@@ -169,7 +171,7 @@ public class HexMapEditorUI : MonoBehaviour
         panelLayout.childForceExpandWidth = true;
         panelLayout.childForceExpandHeight = false;
 
-        titleText = CreateLabel(panel.transform, "Map Builder", 24, FontStyle.Bold, TextAnchor.MiddleLeft);
+        titleText = CreateLabel(panel.transform, "지도 제작소", 24, FontStyle.Bold, TextAnchor.MiddleLeft);
         titleText.GetComponent<LayoutElement>().preferredHeight = 30f;
         modeHintText = CreateLabel(panel.transform, "", 13, FontStyle.Normal, TextAnchor.MiddleLeft);
         modeHintText.color = MutedTextColor;
@@ -191,8 +193,8 @@ public class HexMapEditorUI : MonoBehaviour
     void CreateModeRow(Transform parent)
     {
         GameObject row = CreateRow(parent, "Mode Row", 8f);
-        Button terrain = CreateButton(row.transform, "Terrain", AccentColor, () => Editor.SetMode(HexGrid.EditChannel.Terrain), 36f);
-        Button province = CreateButton(row.transform, "Province", SurfaceColor, () => Editor.SetMode(HexGrid.EditChannel.Province), 36f);
+        Button terrain = CreateButton(row.transform, "지형", AccentColor, () => Editor.SetMode(HexGrid.EditChannel.Terrain), 36f);
+        Button province = CreateButton(row.transform, "프로빈스", SurfaceColor, () => Editor.SetMode(HexGrid.EditChannel.Province), 36f);
         terrainModeText = terrain.GetComponentInChildren<Text>();
         provinceModeText = province.GetComponentInChildren<Text>();
     }
@@ -200,7 +202,7 @@ public class HexMapEditorUI : MonoBehaviour
     void CreateBrushSection(Transform parent)
     {
         GameObject box = CreateSection(parent, "Brush");
-        Text label = CreateLabel(box.transform, "Brush", 14, FontStyle.Bold, TextAnchor.MiddleLeft);
+        Text label = CreateLabel(box.transform, "브러시", 14, FontStyle.Bold, TextAnchor.MiddleLeft);
         label.GetComponent<LayoutElement>().preferredHeight = 20f;
 
         GameObject row = CreateRow(box.transform, "Brush Row", 10f);
@@ -257,10 +259,10 @@ public class HexMapEditorUI : MonoBehaviour
         provinceActions = CreateSection(parent, "Province Actions");
 
         GameObject row = CreateRow(provinceActions.transform, "Province Buttons", 8f);
-        CreateButton(row.transform, "+ Province", AccentColor, () => Editor.AddProvince(), 32f);
-        removeProvinceButton = CreateButton(row.transform, "Remove", WarningColor, () => Editor.RemoveActiveProvince(), 32f);
+        CreateButton(row.transform, "+ 프로빈스", AccentColor, () => Editor.AddProvince(), 32f);
+        removeProvinceButton = CreateButton(row.transform, "삭제", WarningColor, () => Editor.RemoveActiveProvince(), 32f);
 
-        CreateButton(provinceActions.transform, "Paint Unassigned", SurfaceHoverColor, () => Editor.SelectProvince(-1), 32f);
+        CreateButton(provinceActions.transform, "무소속 칠하기", SurfaceHoverColor, () => Editor.SelectProvince(-1), 32f);
 
         Button land = CreateButton(provinceActions.transform, "", SurfaceColor, () => Editor.TogglePaintLandOnly(), 30f);
         landOnlyText = land.GetComponentInChildren<Text>();
@@ -268,8 +270,8 @@ public class HexMapEditorUI : MonoBehaviour
         protectText = protect.GetComponentInChildren<Text>();
 
         GameObject pngRow = CreateRow(provinceActions.transform, "PNG Row", 8f);
-        CreateButton(pngRow.transform, "Save PNG", SurfaceHoverColor, () => Editor.SaveProvincePng(), 32f);
-        CreateButton(pngRow.transform, "Load PNG", SurfaceHoverColor, () => Editor.LoadProvincePng(), 32f);
+        CreateButton(pngRow.transform, "PNG 저장", SurfaceHoverColor, () => Editor.SaveProvincePng(), 32f);
+        CreateButton(pngRow.transform, "PNG 불러오기", SurfaceHoverColor, () => Editor.LoadProvincePng(), 32f);
     }
 
     void CreateFileActions(Transform parent)
@@ -277,20 +279,20 @@ public class HexMapEditorUI : MonoBehaviour
         GameObject section = CreateSection(parent, "Files");
 
         GameObject editRow = CreateRow(section.transform, "Undo Row", 8f);
-        undoButton = CreateButton(editRow.transform, "Undo", SurfaceHoverColor, () => Editor.Undo(), 30f);
-        redoButton = CreateButton(editRow.transform, "Redo", SurfaceHoverColor, () => Editor.Redo(), 30f);
+        undoButton = CreateButton(editRow.transform, "되돌리기", SurfaceHoverColor, () => Editor.Undo(), 30f);
+        redoButton = CreateButton(editRow.transform, "다시 실행", SurfaceHoverColor, () => Editor.Redo(), 30f);
 
         GameObject fileRow = CreateRow(section.transform, "File Row", 8f);
-        CreateButton(fileRow.transform, "Save JSON", AccentColor, () => Editor.SaveGeometry(), 32f);
-        CreateButton(fileRow.transform, "Load JSON", SurfaceHoverColor, () => Editor.LoadGeometry(), 32f);
+        CreateButton(fileRow.transform, "JSON 저장", AccentColor, () => Editor.SaveGeometry(), 32f);
+        CreateButton(fileRow.transform, "JSON 불러오기", SurfaceHoverColor, () => Editor.LoadGeometry(), 32f);
 
-        Text label = CreateLabel(section.transform, "New Map", 13, FontStyle.Bold, TextAnchor.MiddleLeft);
+        Text label = CreateLabel(section.transform, "새 지도", 13, FontStyle.Bold, TextAnchor.MiddleLeft);
         label.GetComponent<LayoutElement>().preferredHeight = 18f;
 
         GameObject mapRow = CreateRow(section.transform, "New Map Row", 8f);
-        widthInput = CreateInput(mapRow.transform, "Width", "16");
-        heightInput = CreateInput(mapRow.transform, "Height", "12");
-        CreateButton(mapRow.transform, "Create", AccentColor, CreateBlankMapFromFields, 32f).GetComponent<LayoutElement>().preferredWidth = 86f;
+        widthInput = CreateInput(mapRow.transform, "너비", "16");
+        heightInput = CreateInput(mapRow.transform, "높이", "12");
+        CreateButton(mapRow.transform, "생성", AccentColor, CreateBlankMapFromFields, 32f).GetComponent<LayoutElement>().preferredWidth = 86f;
     }
 
     void CreateBlankMapFromFields()
@@ -312,33 +314,33 @@ public class HexMapEditorUI : MonoBehaviour
         if (Editor == null || root == null) return;
 
         titleText.text = Editor.Grid != null
-            ? $"Map Builder  {Editor.Grid.CurrentWidth}x{Editor.Grid.CurrentHeight}"
-            : "Map Builder";
+            ? $"지도 제작소  {Editor.Grid.CurrentWidth}x{Editor.Grid.CurrentHeight}"
+            : "지도 제작소";
         modeHintText.text = Editor.PaintMode == HexGrid.EditChannel.Terrain
-            ? "Terrain painting · number keys select terrain"
-            : "Province painting · Alt + click picks a province";
+            ? "지형 편집 · 숫자키로 지형 선택"
+            : "프로빈스 편집 · Alt+클릭으로 프로빈스 선택";
 
         brushSlider.maxValue = Editor.MaxBrushSize;
         brushSlider.SetValueWithoutNotify(Editor.BrushSize);
-        brushValueText.text = Editor.BrushSize == 0 ? "1 cell" : $"+{Editor.BrushSize}";
+        brushValueText.text = Editor.BrushSize == 0 ? "1칸" : $"반경 {Editor.BrushSize}";
 
-        terrainModeText.text = Editor.PaintMode == HexGrid.EditChannel.Terrain ? "● Terrain" : "Terrain";
-        provinceModeText.text = Editor.PaintMode == HexGrid.EditChannel.Province ? "● Province" : "Province";
+        terrainModeText.text = Editor.PaintMode == HexGrid.EditChannel.Terrain ? "● 지형" : "지형";
+        provinceModeText.text = Editor.PaintMode == HexGrid.EditChannel.Province ? "● 프로빈스" : "프로빈스";
 
         bool provinceMode = Editor.PaintMode == HexGrid.EditChannel.Province;
         provinceActions.SetActive(provinceMode);
         if (Editor.Grid != null)
         {
-            landOnlyText.text = Editor.Grid.PaintLandOnly ? "☑ Paint land only" : "☐ Paint land only";
-            protectText.text = Editor.Grid.ProtectOtherProvinces ? "☑ Protect other provinces" : "☐ Protect other provinces";
+            landOnlyText.text = Editor.Grid.PaintLandOnly ? "☑ 육지만 칠하기" : "☐ 육지만 칠하기";
+            protectText.text = Editor.Grid.ProtectOtherProvinces ? "☑ 다른 프로빈스 보호" : "☐ 다른 프로빈스 보호";
         }
 
         undoButton.interactable = Editor.CanUndo;
         redoButton.interactable = Editor.CanRedo;
         removeProvinceButton.interactable = provinceMode && Editor.ActiveProvince >= 0 && Editor.ActiveProvince < Editor.ProvinceCount;
 
-        string detail = string.IsNullOrEmpty(Editor.Status) ? "Ready" : Editor.Status;
-        statusText.text = $"{detail}\n{Editor.SavePath}";
+        string detail = string.IsNullOrEmpty(Editor.Status) ? "준비됨" : Editor.Status;
+        statusText.text = $"{detail}\n저장 경로: {Editor.SavePath}";
 
         bool rebuildList = Editor.PaintMode != (HexGrid.EditChannel)lastMode
             || (Editor.TerrainTypes?.Length ?? 0) != lastTerrainCount
@@ -370,18 +372,31 @@ public class HexMapEditorUI : MonoBehaviour
             {
                 int index = i;
                 string label = Editor.TryGetTerrainName(i, out string terrainName)
-                    ? $"{i + 1}. {terrainName}"
-                    : $"{i + 1}. Terrain";
+                    ? $"{i + 1}. {TerrainLabel(terrainName)}"
+                    : $"{i + 1}. 지형";
                 CreatePaletteButton(label, Editor.GetTerrainColor(i), i == Editor.ActiveTerrain, () => Editor.SelectTerrain(index));
             }
             return;
         }
 
-        CreatePaletteButton("Unassigned", Color.black, Editor.ActiveProvince < 0, () => Editor.SelectProvince(-1));
+        CreatePaletteButton("무소속", Color.black, Editor.ActiveProvince < 0, () => Editor.SelectProvince(-1));
         for (int i = 0; i < Editor.ProvinceCount; i++)
         {
             int index = i;
-            CreatePaletteButton($"Province {i + 1}", Editor.GetProvinceColor(i), i == Editor.ActiveProvince, () => Editor.SelectProvince(index));
+            CreatePaletteButton($"프로빈스 {i + 1}", Editor.GetProvinceColor(i), i == Editor.ActiveProvince, () => Editor.SelectProvince(index));
+        }
+    }
+
+    string TerrainLabel(string id)
+    {
+        switch (id)
+        {
+            case "ocean": return "바다";
+            case "plains": return "평야";
+            case "forest": return "숲";
+            case "hills": return "구릉";
+            case "mountain": return "산악";
+            default: return id;
         }
     }
 
