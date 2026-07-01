@@ -1,6 +1,9 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem; // 새 Input System
+using UnityEngine.InputSystem.UI;
+using UnityEngine.EventSystems;
+using UnityEngine.UI;
 
 /// <summary>
 /// 인게임 맵 에디터 (새 Input System).
@@ -97,10 +100,22 @@ public class HexMapEditor : MonoBehaviour
         Key.Digit5, Key.Digit6, Key.Digit7, Key.Digit8, Key.Digit9
     };
 
+    RectTransform uiRoot;
+    Text statusText;
+    Text titleText;
+    Text brushLabel;
+    Slider brushSlider;
+    Transform listContent;
+    GameObject provinceActions;
+    InputField widthInput;
+    InputField heightInput;
+
     void Start()
     {
         ClampNewMapLimits();
         if (Grid != null) SetupPreview();
+        BuildPrefabStyleMenuUI();
+        RefreshMenuUI();
     }
 
     void OnValidate()
@@ -259,6 +274,10 @@ public class HexMapEditor : MonoBehaviour
     bool IsPointerOverPanel(Vector2 screenPos)
     {
         float guiY = Screen.height - screenPos.y; // 좌하단 → 좌상단 좌표
+        if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject()) return true;
+        if (uiRoot != null)
+            return RectTransformUtility.RectangleContainsScreenPoint(uiRoot, screenPos, null);
+
         return screenPos.x >= OriginX
             && screenPos.x <= OriginX + PanelAreaWidth * UIScale
             && guiY >= PanelTop
@@ -477,9 +496,151 @@ public class HexMapEditor : MonoBehaviour
         mesh.RecalculateBounds();
     }
 
+
+    void BuildPrefabStyleMenuUI()
+    {
+        if (uiRoot != null) return;
+        if (EventSystem.current == null)
+        {
+            var eventSystem = new GameObject("EventSystem", typeof(EventSystem), typeof(InputSystemUIInputModule));
+            eventSystem.transform.SetAsLastSibling();
+        }
+
+        var canvasGO = new GameObject("VictoriaStyleMainMenuCanvas", typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
+        canvasGO.transform.SetParent(transform, false);
+        var canvas = canvasGO.GetComponent<Canvas>();
+        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        canvas.sortingOrder = 100;
+        var scaler = canvasGO.GetComponent<CanvasScaler>();
+        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        scaler.referenceResolution = new Vector2(1920f, 1080f);
+        scaler.matchWidthOrHeight = 0.5f;
+
+        var panel = CreateUIObject("MainMenuPrefabRoot", canvasGO.transform);
+        uiRoot = panel.GetComponent<RectTransform>();
+        uiRoot.anchorMin = new Vector2(0f, 0f);
+        uiRoot.anchorMax = new Vector2(0f, 1f);
+        uiRoot.pivot = new Vector2(0f, 0.5f);
+        uiRoot.sizeDelta = new Vector2(360f, 0f);
+        uiRoot.anchoredPosition = Vector2.zero;
+        var bg = panel.AddComponent<Image>();
+        bg.color = new Color(0.055f, 0.066f, 0.078f, 0.94f);
+        var layout = panel.AddComponent<VerticalLayoutGroup>();
+        layout.padding = new RectOffset(22, 22, 22, 22);
+        layout.spacing = 10f;
+        layout.childControlHeight = false;
+        layout.childForceExpandHeight = false;
+        panel.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.Unconstrained;
+
+        titleText = AddText(panel.transform, "Title", "Pax Map Command", 24, FontStyle.Bold);
+        AddText(panel.transform, "Subtitle", "지도 제작 · 프로빈스 편집 · 파일 관리", 13, FontStyle.Normal, new Color(0.78f, 0.82f, 0.86f));
+
+        var modes = AddRow(panel.transform, "ModeTabs");
+        AddButton(modes, "지형", () => { paintMode = HexGrid.EditChannel.Terrain; RefreshMenuUI(); });
+        AddButton(modes, "프로빈스", () => { paintMode = HexGrid.EditChannel.Province; RefreshMenuUI(); });
+
+        brushLabel = AddText(panel.transform, "BrushLabel", "", 14, FontStyle.Bold);
+        var sliderGO = CreateUIObject("BrushSlider", panel.transform);
+        brushSlider = sliderGO.AddComponent<Slider>();
+        brushSlider.minValue = 0; brushSlider.maxValue = MaxBrushSize; brushSlider.wholeNumbers = true; brushSlider.value = brushSize;
+        BuildSliderVisuals(brushSlider);
+        brushSlider.onValueChanged.AddListener(v => { brushSize = Mathf.RoundToInt(v); RefreshMenuUI(false); });
+        SetLayout(sliderGO, 0, 28);
+
+        var scrollGO = CreateUIObject("SelectionScrollView", panel.transform);
+        SetLayout(scrollGO, 0, 410);
+        var scrollRect = scrollGO.AddComponent<ScrollRect>();
+        var viewport = CreateUIObject("Viewport", scrollGO.transform);
+        viewport.AddComponent<Image>().color = new Color(0f, 0f, 0f, 0.16f);
+        viewport.AddComponent<Mask>().showMaskGraphic = false;
+        Stretch(viewport.GetComponent<RectTransform>());
+        listContent = CreateUIObject("Content", viewport.transform).transform;
+        var contentRt = listContent.GetComponent<RectTransform>();
+        contentRt.anchorMin = new Vector2(0, 1); contentRt.anchorMax = new Vector2(1, 1); contentRt.pivot = new Vector2(0.5f, 1); contentRt.sizeDelta = Vector2.zero;
+        var contentLayout = listContent.gameObject.AddComponent<VerticalLayoutGroup>();
+        contentLayout.padding = new RectOffset(8, 8, 8, 8); contentLayout.spacing = 6; contentLayout.childControlHeight = false;
+        listContent.gameObject.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+        scrollRect.viewport = viewport.GetComponent<RectTransform>(); scrollRect.content = contentRt; scrollRect.horizontal = false;
+
+        provinceActions = CreateUIObject("ProvinceActions", panel.transform);
+        var pa = provinceActions.AddComponent<VerticalLayoutGroup>(); pa.spacing = 6; pa.childControlHeight = false;
+        AddButton(provinceActions.transform, "+ 새 프로빈스", () => { activeProvince = Grid.AddProvince(); RefreshMenuUI(); });
+        AddButton(provinceActions.transform, "- 선택 제거", RemoveActiveProvince);
+        AddButton(provinceActions.transform, "지우개", () => { activeProvince = -1; RefreshMenuUI(); });
+        AddButton(provinceActions.transform, "육지에만 칠하기 전환", () => { Grid.PaintLandOnly = !Grid.PaintLandOnly; RefreshMenuUI(); });
+        AddButton(provinceActions.transform, "다른 프로빈스 보호 전환", () => { Grid.ProtectOtherProvinces = !Grid.ProtectOtherProvinces; RefreshMenuUI(); });
+        AddButton(provinceActions.transform, "프로빈스 PNG 저장", () => { Grid.SaveProvincePNG(ProvincePngPath); SetStatus("프로빈스 PNG 저장됨"); });
+        AddButton(provinceActions.transform, "프로빈스 PNG 불러오기", () => { SetStatus(Grid.LoadProvincePNG(ProvincePngPath) ? "프로빈스 PNG 불러옴" : "PNG 없음/크기불일치"); RefreshMenuUI(); });
+
+        var fileRow = AddRow(panel.transform, "FileRow");
+        AddButton(fileRow, "↶", () => { Grid.Undo(); RefreshMenuUI(); });
+        AddButton(fileRow, "↷", () => { Grid.Redo(); RefreshMenuUI(); });
+        AddButton(fileRow, "저장", () => { Grid.SaveToFile(SavePath); SetStatus("저장됨"); });
+        AddButton(fileRow, "불러오기", () => { SetStatus(Grid.LoadFromFile(SavePath) ? "불러옴" : "저장 파일 없음"); RefreshMenuUI(); });
+
+        var mapRow = AddRow(panel.transform, "NewMapRow");
+        widthInput = AddInput(mapRow, widthText); heightInput = AddInput(mapRow, heightText);
+        AddButton(mapRow, "새 맵 생성", CreateMapFromInputs);
+        statusText = AddText(panel.transform, "Status", "", 13, FontStyle.Italic, new Color(0.95f, 0.82f, 0.48f));
+    }
+
+    void RefreshMenuUI(bool rebuildList = true)
+    {
+        if (Grid == null || uiRoot == null) return;
+        if (titleText != null) titleText.text = $"Pax Map Command  {Grid.CurrentWidth}×{Grid.CurrentHeight}";
+        if (brushLabel != null) brushLabel.text = $"브러시 {brushSize}  · 0=한 칸";
+        if (brushSlider != null && (int)brushSlider.value != brushSize) brushSlider.value = brushSize;
+        if (provinceActions != null) provinceActions.SetActive(paintMode == HexGrid.EditChannel.Province);
+        if (!rebuildList) return;
+        foreach (Transform child in listContent) Destroy(child.gameObject);
+        if (paintMode == HexGrid.EditChannel.Terrain)
+        {
+            AddText(listContent, "TerrainHeader", "지형 목록 (숫자키 1~)", 14, FontStyle.Bold);
+            var types = Grid.TerrainTypes;
+            for (int i = 0; types != null && i < types.Length; i++)
+            {
+                int idx = i;
+                AddButton(listContent, (idx == activeTerrain ? "● " : "○ ") + (idx + 1) + "  " + types[idx].id, () => { activeTerrain = idx; RefreshMenuUI(); }, ParseColor(types[idx].color));
+            }
+        }
+        else
+        {
+            AddText(listContent, "ProvinceHeader", "프로빈스 목록 · Alt+클릭 스포이드", 14, FontStyle.Bold);
+            for (int i = 0; i < Grid.ProvinceCount; i++)
+            {
+                int idx = i;
+                AddButton(listContent, (idx == activeProvince ? "● " : "○ ") + "프로빈스 " + (idx + 1), () => { activeProvince = idx; RefreshMenuUI(); }, Grid.GetProvinceColor(idx));
+            }
+        }
+    }
+
+    void RemoveActiveProvince()
+    {
+        if (activeProvince < 0 || activeProvince >= Grid.ProvinceCount) return;
+        int removed = activeProvince;
+        if (Grid.RemoveProvince(removed)) activeProvince = Grid.ProvinceCount > 0 ? Mathf.Min(removed, Grid.ProvinceCount - 1) : -1;
+        SetStatus($"프로빈스 {removed + 1} 제거됨"); RefreshMenuUI();
+    }
+
+    void CreateMapFromInputs()
+    {
+        if (int.TryParse(widthInput.text, out int w) && int.TryParse(heightInput.text, out int h)) { Grid.CreateBlankMap(w, h, MaxNewMapWidth, MaxNewMapHeight); RefreshMenuUI(); }
+    }
+
+    void SetStatus(string message) { status = message; if (statusText != null) statusText.text = message; }
+
+    static GameObject CreateUIObject(string name, Transform parent) { var go = new GameObject(name, typeof(RectTransform)); go.transform.SetParent(parent, false); return go; }
+    static void Stretch(RectTransform rt) { rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one; rt.offsetMin = Vector2.zero; rt.offsetMax = Vector2.zero; }
+    static void SetLayout(GameObject go, float minW, float minH) { var le = go.GetComponent<LayoutElement>() ?? go.AddComponent<LayoutElement>(); le.minWidth = minW; le.minHeight = minH; }
+    Text AddText(Transform parent, string name, string value, int size, FontStyle style, Color? color = null) { var go = CreateUIObject(name, parent); var t = go.AddComponent<Text>(); t.text = value; t.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf"); t.fontSize = size; t.fontStyle = style; t.color = color ?? Color.white; SetLayout(go, 0, size + 8); return t; }
+    Transform AddRow(Transform parent, string name) { var go = CreateUIObject(name, parent); var lg = go.AddComponent<HorizontalLayoutGroup>(); lg.spacing = 6; lg.childForceExpandWidth = true; lg.childControlWidth = true; SetLayout(go, 0, 34); return go.transform; }
+    Button AddButton(Transform parent, string label, UnityEngine.Events.UnityAction action, Color? tint = null) { var go = CreateUIObject("Button_" + label, parent); var img = go.AddComponent<Image>(); img.color = tint ?? new Color(0.18f, 0.22f, 0.27f, 0.96f); var btn = go.AddComponent<Button>(); btn.targetGraphic = img; btn.onClick.AddListener(action); var txt = AddText(go.transform, "Text", label, 14, FontStyle.Bold); txt.alignment = TextAnchor.MiddleCenter; Stretch(txt.rectTransform); SetLayout(go, 0, 34); return btn; }
+    InputField AddInput(Transform parent, string value) { var go = CreateUIObject("Input", parent); go.AddComponent<Image>().color = new Color(0.08f, 0.09f, 0.1f, 1f); var input = go.AddComponent<InputField>(); var text = AddText(go.transform, "Text", value, 14, FontStyle.Normal); text.alignment = TextAnchor.MiddleCenter; Stretch(text.rectTransform); input.textComponent = text; input.text = value; SetLayout(go, 70, 34); return input; }
+    void BuildSliderVisuals(Slider slider) { var bg = slider.gameObject.AddComponent<Image>(); bg.color = new Color(0.12f, 0.14f, 0.16f, 1f); var fill = CreateUIObject("Fill", slider.transform).AddComponent<Image>(); fill.color = new Color(0.68f, 0.50f, 0.26f, 1f); Stretch(fill.rectTransform); slider.fillRect = fill.rectTransform; var handle = CreateUIObject("Handle", slider.transform).AddComponent<Image>(); handle.color = new Color(0.95f, 0.84f, 0.58f, 1f); handle.rectTransform.sizeDelta = new Vector2(18, 28); slider.handleRect = handle.rectTransform; }
+
     // ───────────────────────── UI ─────────────────────────
 
-    void OnGUI()
+    void LegacyOnGUI_Disabled()
     {
         TerrainType[] types = Grid != null ? Grid.TerrainTypes : null;
         if (types == null) return;
