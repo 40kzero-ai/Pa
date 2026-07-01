@@ -502,35 +502,42 @@ public class HexMapEditor : MonoBehaviour
         if (uiRoot != null) return;
         if (EventSystem.current == null)
         {
-            var eventSystem = new GameObject("EventSystem", typeof(EventSystem), typeof(InputSystemUIInputModule));
+            var eventSystem = GameObject.Find("EventSystem") ?? new GameObject("EventSystem");
+            EnsureComponent<EventSystem>(eventSystem);
+            EnsureComponent<InputSystemUIInputModule>(eventSystem);
             eventSystem.transform.SetAsLastSibling();
         }
 
-        var canvasGO = new GameObject("VictoriaStyleMainMenuCanvas", typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
+        var canvasGO = GameObject.Find("VictoriaStyleMainMenuCanvas")
+            ?? new GameObject("VictoriaStyleMainMenuCanvas", typeof(RectTransform));
         canvasGO.transform.SetParent(transform, false);
-        var canvas = canvasGO.GetComponent<Canvas>();
+        var canvas = EnsureComponent<Canvas>(canvasGO);
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
         canvas.sortingOrder = 100;
-        var scaler = canvasGO.GetComponent<CanvasScaler>();
+        EnsureComponent<GraphicRaycaster>(canvasGO);
+        var scaler = EnsureComponent<CanvasScaler>(canvasGO);
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
         scaler.referenceResolution = new Vector2(1920f, 1080f);
         scaler.matchWidthOrHeight = 0.5f;
 
-        var panel = CreateUIObject("MainMenuPrefabRoot", canvasGO.transform);
-        uiRoot = panel.GetComponent<RectTransform>();
+        var panelTransform = canvasGO.transform.Find("MainMenuPrefabRoot");
+        var panel = panelTransform != null ? panelTransform.gameObject : CreateUIObject("MainMenuPrefabRoot", canvasGO.transform);
+        panel.transform.SetParent(canvasGO.transform, false);
+        foreach (Transform child in panel.transform) Destroy(child.gameObject);
+        uiRoot = panel.GetComponent<RectTransform>() ?? panel.AddComponent<RectTransform>();
         uiRoot.anchorMin = new Vector2(0f, 0f);
         uiRoot.anchorMax = new Vector2(0f, 1f);
         uiRoot.pivot = new Vector2(0f, 0.5f);
         uiRoot.sizeDelta = new Vector2(360f, 0f);
         uiRoot.anchoredPosition = Vector2.zero;
-        var bg = panel.AddComponent<Image>();
+        var bg = EnsureComponent<Image>(panel);
         bg.color = new Color(0.055f, 0.066f, 0.078f, 0.94f);
-        var layout = panel.AddComponent<VerticalLayoutGroup>();
+        var layout = EnsureComponent<VerticalLayoutGroup>(panel);
         layout.padding = new RectOffset(22, 22, 22, 22);
         layout.spacing = 10f;
         layout.childControlHeight = false;
         layout.childForceExpandHeight = false;
-        panel.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.Unconstrained;
+        EnsureComponent<ContentSizeFitter>(panel).verticalFit = ContentSizeFitter.FitMode.Unconstrained;
 
         titleText = AddText(panel.transform, "Title", "Pax Map Command", 24, FontStyle.Bold);
         AddText(panel.transform, "Subtitle", "지도 제작 · 프로빈스 편집 · 파일 관리", 13, FontStyle.Normal, new Color(0.78f, 0.82f, 0.86f));
@@ -629,6 +636,7 @@ public class HexMapEditor : MonoBehaviour
 
     void SetStatus(string message) { status = message; if (statusText != null) statusText.text = message; }
 
+    static T EnsureComponent<T>(GameObject go) where T : Component { return go.GetComponent<T>() ?? go.AddComponent<T>(); }
     static GameObject CreateUIObject(string name, Transform parent) { var go = new GameObject(name, typeof(RectTransform)); go.transform.SetParent(parent, false); return go; }
     static void Stretch(RectTransform rt) { rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one; rt.offsetMin = Vector2.zero; rt.offsetMax = Vector2.zero; }
     static void SetLayout(GameObject go, float minW, float minH) { var le = go.GetComponent<LayoutElement>() ?? go.AddComponent<LayoutElement>(); le.minWidth = minW; le.minHeight = minH; }
