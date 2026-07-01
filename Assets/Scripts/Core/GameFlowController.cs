@@ -17,7 +17,6 @@ public sealed class GameFlowController : MonoBehaviour
 
         Instance = this;
         DontDestroyOnLoad(gameObject);
-        SaveManager.GetOrCreate();
     }
 
     public static GameFlowController GetOrCreate()
