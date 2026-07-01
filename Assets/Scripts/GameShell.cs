@@ -2,6 +2,8 @@ using System.Collections;
 using System.IO;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.InputSystem;
+using UnityEngine.InputSystem.UI;
 using UnityEngine.UI;
 
 /// <summary>
@@ -39,6 +41,7 @@ public class GameShell : MonoBehaviour
 
     Canvas canvas;
     CanvasScaler scaler;
+    InputActionAsset uiActions;
     RectTransform root;
     GameObject backdrop;
     GameObject connectPanel;
@@ -93,9 +96,57 @@ public class GameShell : MonoBehaviour
 
     void EnsureEventSystem()
     {
-        if (FindFirstObjectByType<EventSystem>() != null) return;
-        GameObject eventSystem = new GameObject("EventSystem", typeof(EventSystem), typeof(StandaloneInputModule));
-        DontDestroyOnLoad(eventSystem);
+        EventSystem eventSystem = FindFirstObjectByType<EventSystem>();
+        if (eventSystem == null)
+        {
+            GameObject eventSystemObject = new GameObject("EventSystem", typeof(EventSystem));
+            eventSystem = eventSystemObject.GetComponent<EventSystem>();
+            DontDestroyOnLoad(eventSystemObject);
+        }
+
+        foreach (StandaloneInputModule oldInputModule in eventSystem.GetComponents<StandaloneInputModule>())
+            Destroy(oldInputModule);
+
+        InputSystemUIInputModule inputModule = eventSystem.GetComponent<InputSystemUIInputModule>();
+        if (inputModule == null) inputModule = eventSystem.gameObject.AddComponent<InputSystemUIInputModule>();
+        ConfigureInputSystemUiModule(inputModule);
+    }
+
+    void ConfigureInputSystemUiModule(InputSystemUIInputModule inputModule)
+    {
+        uiActions = ScriptableObject.CreateInstance<InputActionAsset>();
+        uiActions.name = "GameShell UI Input Actions";
+        InputActionMap map = uiActions.AddActionMap("UI");
+
+        InputAction point = map.AddAction("Point", InputActionType.PassThrough, "<Pointer>/position");
+        InputAction leftClick = map.AddAction("LeftClick", InputActionType.Button, "<Pointer>/press");
+        InputAction rightClick = map.AddAction("RightClick", InputActionType.Button, "<Mouse>/rightButton");
+        InputAction middleClick = map.AddAction("MiddleClick", InputActionType.Button, "<Mouse>/middleButton");
+        InputAction scrollWheel = map.AddAction("ScrollWheel", InputActionType.PassThrough, "<Pointer>/scroll");
+        InputAction navigate = map.AddAction("Navigate", InputActionType.PassThrough);
+        navigate.AddCompositeBinding("2DVector")
+            .With("Up", "<Keyboard>/w")
+            .With("Up", "<Keyboard>/upArrow")
+            .With("Down", "<Keyboard>/s")
+            .With("Down", "<Keyboard>/downArrow")
+            .With("Left", "<Keyboard>/a")
+            .With("Left", "<Keyboard>/leftArrow")
+            .With("Right", "<Keyboard>/d")
+            .With("Right", "<Keyboard>/rightArrow");
+        InputAction submit = map.AddAction("Submit", InputActionType.Button, "<Keyboard>/enter");
+        submit.AddBinding("<Keyboard>/numpadEnter");
+        InputAction cancel = map.AddAction("Cancel", InputActionType.Button, "<Keyboard>/escape");
+
+        inputModule.actionsAsset = uiActions;
+        inputModule.point = InputActionReference.Create(point);
+        inputModule.leftClick = InputActionReference.Create(leftClick);
+        inputModule.rightClick = InputActionReference.Create(rightClick);
+        inputModule.middleClick = InputActionReference.Create(middleClick);
+        inputModule.scrollWheel = InputActionReference.Create(scrollWheel);
+        inputModule.move = InputActionReference.Create(navigate);
+        inputModule.submit = InputActionReference.Create(submit);
+        inputModule.cancel = InputActionReference.Create(cancel);
+        uiActions.Enable();
     }
 
     void BuildUi()
@@ -111,7 +162,7 @@ public class GameShell : MonoBehaviour
 
         scaler = canvasObject.GetComponent<CanvasScaler>();
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-        scaler.referenceResolution = new Vector2(1920, 1080);
+        scaler.referenceResolution = new Vector2(1600, 900);
         scaler.matchWidthOrHeight = 0.5f;
 
         root = canvasObject.GetComponent<RectTransform>();
@@ -202,7 +253,7 @@ public class GameShell : MonoBehaviour
         CreateButton(panel.transform, "메인 메뉴", new Vector2(110, -178), new Vector2(200, 46), () => ShowState(ShellState.MainMenu));
         uiScaleSlider.onValueChanged.AddListener(value =>
         {
-            scaler.scaleFactor = value;
+            scaler.referenceResolution = new Vector2(1600f / value, 900f / value);
             uiScaleText.text = $"UI 배율: {value:0.00}";
         });
         return panel;
@@ -351,7 +402,9 @@ public class GameShell : MonoBehaviour
 
     void AddPanelTitle(GameObject panel, string text, int size = 26, Vector2? offset = null)
     {
-        CreateText("Panel Title", panel.transform, text, size, FontStyle.Bold, TextAnchor.MiddleCenter, new Color(0.94f, 0.97f, 1f), offset ?? new Vector2(0, 132), new Vector2(460, 42));
+        RectTransform panelRect = panel.GetComponent<RectTransform>();
+        float topOffset = panelRect != null ? Mathf.Max(52f, panelRect.sizeDelta.y * 0.5f - 48f) : 72f;
+        CreateText("Panel Title", panel.transform, text, size, FontStyle.Bold, TextAnchor.MiddleCenter, new Color(0.94f, 0.97f, 1f), offset ?? new Vector2(0, topOffset), new Vector2(460, 42));
     }
 
     Text CreateLabel(Transform parent, string text, Vector2 pos, Vector2 size) =>
