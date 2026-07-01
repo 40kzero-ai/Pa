@@ -3,6 +3,7 @@ using System.IO;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem.UI;
+using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
 /// <summary>
@@ -12,8 +13,16 @@ using UnityEngine.UI;
 [DisallowMultipleComponent]
 public class HexGameFlow : MonoBehaviour
 {
+    public enum FlowSceneRole { Auto, Boot, Loading, MainMenu, Game, Editor }
+
     public HexMapEditor Editor;
     public HexGrid Grid;
+    public FlowSceneRole SceneRole = FlowSceneRole.Auto;
+    public string BootSceneName = "BootScene";
+    public string LoadingSceneName = "LoadingScene";
+    public string MainMenuSceneName = "MainMenuScene";
+    public string GameSceneName = "GameScene";
+    public string EditorSceneName = "EditorScene";
     public float LoadingSeconds = 0.85f;
     public Vector2 ReferenceResolution = new Vector2(1920, 1080);
 
@@ -36,12 +45,19 @@ public class HexGameFlow : MonoBehaviour
     Text keyPanButtonText;
     Coroutine transitionRoutine;
 
+    const string TargetSceneKey = "HexFlow.TargetScene";
+    const string LoadingTitleKey = "HexFlow.LoadingTitle";
+    const string LoadingDetailKey = "HexFlow.LoadingDetail";
+    const string NextActionKey = "HexFlow.NextAction";
+    const string ContinueAction = "continue";
+
     void Awake()
     {
         if (Editor == null) Editor = GetComponent<HexMapEditor>();
         if (Grid == null) Grid = GetComponent<HexGrid>();
         if (Grid == null && Editor != null) Grid = Editor.Grid;
         EnsureFont();
+        EnsureRenderCamera();
         EnsureEventSystem();
     }
 
@@ -51,8 +67,24 @@ public class HexGameFlow : MonoBehaviour
         if (Grid == null) Grid = GetComponent<HexGrid>();
         if (Grid == null && Editor != null) Grid = Editor.Grid;
 
-        if (Editor != null) Editor.ExitEditorMode();
-        ShowBootLoading();
+        switch (ResolveSceneRole())
+        {
+            case FlowSceneRole.Boot:
+                LoadThroughLoading(MainMenuSceneName, "부팅 중", "핵심 시스템과 메뉴 씬을 준비하고 있습니다.");
+                break;
+            case FlowSceneRole.Loading:
+                StartCoroutine(LoadingSceneRoutine());
+                break;
+            case FlowSceneRole.MainMenu:
+                ShowMainMenu();
+                break;
+            case FlowSceneRole.Editor:
+                EnterEditorMode();
+                break;
+            default:
+                EnterGameMode();
+                break;
+        }
     }
 
     void OnDestroy()
@@ -62,36 +94,68 @@ public class HexGameFlow : MonoBehaviour
         DestroySafe(loadingRoot);
     }
 
-    void ShowBootLoading()
+    FlowSceneRole ResolveSceneRole()
     {
-        BeginTransition("로딩 중", "지도 데이터와 사용자 인터페이스를 준비하고 있습니다.", ShowMainMenu);
+        if (SceneRole != FlowSceneRole.Auto) return SceneRole;
+
+        string scene = SceneManager.GetActiveScene().name;
+        if (scene == BootSceneName) return FlowSceneRole.Boot;
+        if (scene == LoadingSceneName) return FlowSceneRole.Loading;
+        if (scene == MainMenuSceneName) return FlowSceneRole.MainMenu;
+        if (scene == EditorSceneName) return FlowSceneRole.Editor;
+        return FlowSceneRole.Game;
     }
 
-    void BeginTransition(string title, string detail, System.Action onComplete)
+    void LoadThroughLoading(string targetScene, string title, string detail, string nextAction = "")
     {
-        if (transitionRoutine != null) StopCoroutine(transitionRoutine);
-        transitionRoutine = StartCoroutine(TransitionRoutine(title, detail, onComplete));
+        PlayerPrefs.SetString(TargetSceneKey, targetScene);
+        PlayerPrefs.SetString(LoadingTitleKey, title);
+        PlayerPrefs.SetString(LoadingDetailKey, detail);
+        PlayerPrefs.SetString(NextActionKey, nextAction);
+        PlayerPrefs.Save();
+
+        if (Application.CanStreamedLevelBeLoaded(LoadingSceneName))
+        {
+            SceneManager.LoadScene(LoadingSceneName);
+            return;
+        }
+
+        // Development fallback if the new scenes have not been added to Build Settings yet.
+        if (targetScene == MainMenuSceneName) ShowMainMenu();
+        else if (targetScene == EditorSceneName) EnterEditorMode();
+        else EnterGameMode();
     }
 
-    IEnumerator TransitionRoutine(string title, string detail, System.Action onComplete)
+    IEnumerator LoadingSceneRoutine()
     {
-        DestroySafe(menuRoot);
-        DestroySafe(hudRoot);
+        string targetScene = PlayerPrefs.GetString(TargetSceneKey, MainMenuSceneName);
+        string title = PlayerPrefs.GetString(LoadingTitleKey, "로딩 중");
+        string detail = PlayerPrefs.GetString(LoadingDetailKey, "다음 화면을 준비하고 있습니다.");
         CreateLoading(title, detail);
 
-        float elapsed = 0f;
-        while (elapsed < LoadingSeconds)
+        float warmup = 0f;
+        while (warmup < LoadingSeconds)
         {
-            elapsed += Time.unscaledDeltaTime;
-            float t = Mathf.Clamp01(elapsed / Mathf.Max(0.01f, LoadingSeconds));
-            if (loadingSlider != null) loadingSlider.SetValueWithoutNotify(t);
+            warmup += Time.unscaledDeltaTime;
+            if (loadingSlider != null)
+                loadingSlider.SetValueWithoutNotify(Mathf.Clamp01(warmup / Mathf.Max(0.01f, LoadingSeconds)) * 0.35f);
             yield return null;
         }
 
-        DestroySafe(loadingRoot);
-        loadingRoot = null;
-        transitionRoutine = null;
-        onComplete?.Invoke();
+        if (!Application.CanStreamedLevelBeLoaded(targetScene))
+        {
+            if (loadingDetail != null) loadingDetail.text = $"씬을 찾을 수 없습니다: {targetScene}";
+            yield break;
+        }
+
+        AsyncOperation op = SceneManager.LoadSceneAsync(targetScene);
+        while (op != null && !op.isDone)
+        {
+            float progress = Mathf.Clamp01(op.progress / 0.9f);
+            if (loadingSlider != null)
+                loadingSlider.SetValueWithoutNotify(Mathf.Lerp(0.35f, 1f, progress));
+            yield return null;
+        }
     }
 
     void ShowMainMenu()
@@ -128,12 +192,15 @@ public class HexGameFlow : MonoBehaviour
         subtitle.GetComponent<LayoutElement>().preferredHeight = 34f;
 
         CreateSpacer(panel.transform, 18f);
-        CreateButton(panel.transform, "새로운 게임", AccentColor, () => BeginTransition("새로운 게임", "기본 시나리오를 준비하고 있습니다.", EnterGameMode), 48f);
+        CreateButton(panel.transform, "새로운 게임", AccentColor,
+            () => LoadThroughLoading(GameSceneName, "새로운 게임", "기본 시나리오를 준비하고 있습니다."), 48f);
 
-        Button continueButton = CreateButton(panel.transform, "이어하기", SurfaceColor, () => BeginTransition("이어하기", "저장된 지도를 불러오고 있습니다.", ContinueGame), 48f);
-        continueButton.interactable = Editor != null && File.Exists(Editor.SavePath);
+        Button continueButton = CreateButton(panel.transform, "이어하기", SurfaceColor,
+            () => LoadThroughLoading(GameSceneName, "이어하기", "저장된 지도를 불러오고 있습니다.", ContinueAction), 48f);
+        continueButton.interactable = HasSaveFile();
 
-        CreateButton(panel.transform, "에디터 모드로 진입", SurfaceColor, () => BeginTransition("에디터 모드", "지도 제작 도구를 준비하고 있습니다.", EnterEditorMode), 48f);
+        CreateButton(panel.transform, "에디터 모드로 진입", SurfaceColor,
+            () => LoadThroughLoading(EditorSceneName, "에디터 모드", "지도 제작 도구를 준비하고 있습니다."), 48f);
         CreateButton(panel.transform, "설정", SurfaceColor, ShowSettings, 48f);
         CreateButton(panel.transform, "종료", new Color(0.30f, 0.16f, 0.15f, 1f), QuitGame, 44f);
 
@@ -168,15 +235,12 @@ public class HexGameFlow : MonoBehaviour
     {
         if (Editor != null) Editor.ExitEditorMode();
         DestroySafe(menuRoot);
-        CreateGameHud("게임 모드", "시나리오 시작됨");
-    }
 
-    void ContinueGame()
-    {
-        if (Editor != null && Grid == null) Grid = Editor.Grid;
-        if (Editor != null && Grid != null && File.Exists(Editor.SavePath))
+        if (PlayerPrefs.GetString(NextActionKey, "") == ContinueAction && Editor != null && Grid != null && File.Exists(Editor.SavePath))
             Grid.LoadFromFile(Editor.SavePath);
-        EnterGameMode();
+
+        PlayerPrefs.DeleteKey(NextActionKey);
+        CreateGameHud("게임 모드", "시나리오 시작됨");
     }
 
     void EnterEditorMode()
@@ -184,6 +248,7 @@ public class HexGameFlow : MonoBehaviour
         DestroySafe(menuRoot);
         DestroySafe(hudRoot);
         if (Editor != null) Editor.EnterEditorMode();
+        CreateEditorHud();
     }
 
     void CreateGameHud(string mode, string status)
@@ -212,8 +277,10 @@ public class HexGameFlow : MonoBehaviour
         title.GetComponent<LayoutElement>().flexibleWidth = 1f;
         CreateLabel(top.transform, "1836년 1월 1일", 14, FontStyle.Normal, TextAnchor.MiddleCenter).GetComponent<LayoutElement>().preferredWidth = 150f;
         CreateLabel(top.transform, "국고 1,000", 14, FontStyle.Normal, TextAnchor.MiddleCenter).GetComponent<LayoutElement>().preferredWidth = 120f;
-        CreateButton(top.transform, "에디터", SurfaceColor, () => BeginTransition("에디터 모드", "지도 제작 도구를 준비하고 있습니다.", EnterEditorMode), 92f, 38f);
-        CreateButton(top.transform, "메뉴", AccentColor, ShowMainMenu, 86f, 38f);
+        CreateButton(top.transform, "에디터", SurfaceColor,
+            () => LoadThroughLoading(EditorSceneName, "에디터 모드", "지도 제작 도구를 준비하고 있습니다."), 92f, 38f);
+        CreateButton(top.transform, "메뉴", AccentColor,
+            () => LoadThroughLoading(MainMenuSceneName, "메인 메뉴", "메뉴 화면을 준비하고 있습니다."), 86f, 38f);
 
         GameObject bottom = CreateObject("하단 상태", hudRoot.transform, typeof(Image));
         RectTransform bottomRect = bottom.GetComponent<RectTransform>();
@@ -227,6 +294,31 @@ public class HexGameFlow : MonoBehaviour
         Text statusText = CreateLabel(bottom.transform, status + " · 우클릭 드래그/휠로 지도 탐색", 13, FontStyle.Normal, TextAnchor.MiddleLeft);
         statusText.color = MutedTextColor;
         Stretch(statusText.rectTransform, new Vector2(18f, 0f), new Vector2(-18f, 0f));
+    }
+
+    void CreateEditorHud()
+    {
+        DestroySafe(hudRoot);
+        hudRoot = CreateCanvasRoot("에디터 상단 메뉴", 130);
+
+        GameObject bar = CreateObject("에디터 상단 바", hudRoot.transform, typeof(HorizontalLayoutGroup));
+        RectTransform rect = bar.GetComponent<RectTransform>();
+        rect.anchorMin = new Vector2(1f, 1f);
+        rect.anchorMax = new Vector2(1f, 1f);
+        rect.pivot = new Vector2(1f, 1f);
+        rect.anchoredPosition = new Vector2(-18f, -16f);
+        rect.sizeDelta = new Vector2(220f, 40f);
+
+        HorizontalLayoutGroup layout = bar.GetComponent<HorizontalLayoutGroup>();
+        layout.spacing = 8f;
+        layout.childControlWidth = true;
+        layout.childControlHeight = true;
+        layout.childForceExpandWidth = true;
+
+        CreateButton(bar.transform, "게임", SurfaceColor,
+            () => LoadThroughLoading(GameSceneName, "게임 모드", "시나리오 화면을 준비하고 있습니다."), 92f, 38f);
+        CreateButton(bar.transform, "메뉴", AccentColor,
+            () => LoadThroughLoading(MainMenuSceneName, "메인 메뉴", "메뉴 화면을 준비하고 있습니다."), 92f, 38f);
     }
 
     void CreateLoading(string title, string detail)
@@ -276,6 +368,13 @@ public class HexGameFlow : MonoBehaviour
 #if UNITY_EDITOR
         Debug.Log("종료 요청");
 #endif
+    }
+
+    bool HasSaveFile()
+    {
+        if (Editor != null) return File.Exists(Editor.SavePath);
+        string path = Path.Combine(Application.persistentDataPath, "edited_geometry.json");
+        return File.Exists(path);
     }
 
     GameObject CreateCanvasRoot(string name, int sortingOrder)
@@ -422,6 +521,24 @@ public class HexGameFlow : MonoBehaviour
         InputSystemUIInputModule module = eventSystem.AddComponent<InputSystemUIInputModule>();
         module.AssignDefaultActions();
         eventSystem.transform.SetParent(transform, false);
+    }
+
+    void EnsureRenderCamera()
+    {
+        if (Camera.main != null) return;
+
+        GameObject cameraObject = new GameObject("Menu Camera", typeof(Camera));
+        cameraObject.tag = "MainCamera";
+        cameraObject.transform.SetParent(transform, false);
+        cameraObject.transform.position = new Vector3(0f, 0f, -10f);
+
+        Camera camera = cameraObject.GetComponent<Camera>();
+        camera.clearFlags = CameraClearFlags.SolidColor;
+        camera.backgroundColor = BackgroundColor;
+        camera.orthographic = true;
+        camera.orthographicSize = 5f;
+        camera.nearClipPlane = 0.1f;
+        camera.farClipPlane = 100f;
     }
 
     void EnsureFont()

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
+using UnityEngine.SceneManagement;
 
 /// <summary>
 /// Runtime map editing controller.
@@ -93,7 +94,7 @@ public class HexMapEditor : MonoBehaviour
         ClampNewMapLimits();
         if (Grid == null) Grid = FindFirstObjectByType<HexGrid>();
         if (Grid != null) SetupPreview();
-        if (StartInEditorMode) EnterEditorMode();
+        if (StartInEditorMode || SceneManager.GetActiveScene().name == "EditorScene") EnterEditorMode();
         else ExitEditorMode();
         NotifyStateChanged();
     }
