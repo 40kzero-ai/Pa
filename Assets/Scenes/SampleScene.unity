@@ -418,6 +418,7 @@ GameObject:
   - component: {fileID: 596827398}
   - component: {fileID: 596827397}
   - component: {fileID: 596827396}
+  - component: {fileID: 596827399}
   m_Layer: 0
   m_Name: HexGrid
   m_TagString: Untagged
@@ -472,6 +473,30 @@ MonoBehaviour:
   ProtectOtherProvinces: 1
   HeightScale: 0
   SurfaceSubdivisions: 1
+--- !u!114 &596827399
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 596827395}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7a879996748240e7b02951809085e039, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::GameShell
+  Grid: {fileID: 596827397}
+  Editor: {fileID: 596827396}
+  CameraController: {fileID: 330585548}
+  GameTitle: Province Architect
+  VersionText: Prototype Build
+  HideMapUntilGameStarts: 1
+  MinimumLoadingSeconds: 1.2
+  LoadingMessages:
+  - 지형 팔레트 초기화 중...
+  - 프로빈스 경계 계산 중...
+  - 카메라 위치 보정 중...
+  - 게임 세계 접속 완료
 --- !u!4 &596827398
 Transform:
   m_ObjectHideFlags: 0
