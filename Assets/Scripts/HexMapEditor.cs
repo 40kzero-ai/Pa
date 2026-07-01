@@ -527,25 +527,30 @@ public class HexMapEditor : MonoBehaviour
         uiRoot.anchorMin = new Vector2(0f, 0f);
         uiRoot.anchorMax = new Vector2(0f, 1f);
         uiRoot.pivot = new Vector2(0f, 0.5f);
-        uiRoot.sizeDelta = new Vector2(360f, 0f);
+        uiRoot.sizeDelta = new Vector2(430f, 0f);
         uiRoot.anchoredPosition = Vector2.zero;
         var bg = EnsureComponent<Image>(panel);
-        bg.color = new Color(0.055f, 0.066f, 0.078f, 0.94f);
+        bg.color = new Color(0.035f, 0.043f, 0.055f, 0.97f);
         var layout = EnsureComponent<VerticalLayoutGroup>(panel);
-        layout.padding = new RectOffset(22, 22, 22, 22);
-        layout.spacing = 10f;
+        layout.padding = new RectOffset(26, 26, 24, 24);
+        layout.spacing = 12f;
         layout.childControlHeight = false;
         layout.childForceExpandHeight = false;
         EnsureComponent<ContentSizeFitter>(panel).verticalFit = ContentSizeFitter.FitMode.Unconstrained;
 
-        titleText = AddText(panel.transform, "Title", "Pax Map Command", 24, FontStyle.Bold);
-        AddText(panel.transform, "Subtitle", "지도 제작 · 프로빈스 편집 · 파일 관리", 13, FontStyle.Normal, new Color(0.78f, 0.82f, 0.86f));
+        AddPanelChrome(panel.transform);
+        titleText = AddText(panel.transform, "Title", "PAX IMPERIUM", 30, FontStyle.Bold, new Color(0.96f, 0.85f, 0.55f));
+        titleText.alignment = TextAnchor.MiddleLeft;
+        AddText(panel.transform, "Subtitle", "지도 제작 · 프로빈스 편집 · 파일 관리", 14, FontStyle.Normal, new Color(0.78f, 0.83f, 0.88f));
+        AddDivider(panel.transform, "HeaderDivider", new Color(0.72f, 0.52f, 0.24f, 0.8f));
 
+        AddSectionHeader(panel.transform, "작업 모드");
         var modes = AddRow(panel.transform, "ModeTabs");
         AddButton(modes, "지형", () => { paintMode = HexGrid.EditChannel.Terrain; RefreshMenuUI(); });
         AddButton(modes, "프로빈스", () => { paintMode = HexGrid.EditChannel.Province; RefreshMenuUI(); });
 
-        brushLabel = AddText(panel.transform, "BrushLabel", "", 14, FontStyle.Bold);
+        AddSectionHeader(panel.transform, "브러시");
+        brushLabel = AddText(panel.transform, "BrushLabel", "", 14, FontStyle.Bold, new Color(0.86f, 0.9f, 0.95f));
         var sliderGO = CreateUIObject("BrushSlider", panel.transform);
         brushSlider = sliderGO.AddComponent<Slider>();
         brushSlider.minValue = 0; brushSlider.maxValue = MaxBrushSize; brushSlider.wholeNumbers = true; brushSlider.value = brushSize;
@@ -553,11 +558,12 @@ public class HexMapEditor : MonoBehaviour
         brushSlider.onValueChanged.AddListener(v => { brushSize = Mathf.RoundToInt(v); RefreshMenuUI(false); });
         SetLayout(sliderGO, 0, 28);
 
+        AddSectionHeader(panel.transform, "선택 목록");
         var scrollGO = CreateUIObject("SelectionScrollView", panel.transform);
         SetLayout(scrollGO, 0, 410);
         var scrollRect = scrollGO.AddComponent<ScrollRect>();
         var viewport = CreateUIObject("Viewport", scrollGO.transform);
-        viewport.AddComponent<Image>().color = new Color(0f, 0f, 0f, 0.16f);
+        viewport.AddComponent<Image>().color = new Color(0.015f, 0.02f, 0.026f, 0.72f);
         viewport.AddComponent<Mask>().showMaskGraphic = false;
         Stretch(viewport.GetComponent<RectTransform>());
         listContent = CreateUIObject("Content", viewport.transform).transform;
@@ -568,6 +574,7 @@ public class HexMapEditor : MonoBehaviour
         listContent.gameObject.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
         scrollRect.viewport = viewport.GetComponent<RectTransform>(); scrollRect.content = contentRt; scrollRect.horizontal = false;
 
+        AddSectionHeader(panel.transform, "프로빈스 명령");
         provinceActions = CreateUIObject("ProvinceActions", panel.transform);
         var pa = provinceActions.AddComponent<VerticalLayoutGroup>(); pa.spacing = 6; pa.childControlHeight = false;
         AddButton(provinceActions.transform, "+ 새 프로빈스", () => { activeProvince = Grid.AddProvince(); RefreshMenuUI(); });
@@ -578,12 +585,14 @@ public class HexMapEditor : MonoBehaviour
         AddButton(provinceActions.transform, "프로빈스 PNG 저장", () => { Grid.SaveProvincePNG(ProvincePngPath); SetStatus("프로빈스 PNG 저장됨"); });
         AddButton(provinceActions.transform, "프로빈스 PNG 불러오기", () => { SetStatus(Grid.LoadProvincePNG(ProvincePngPath) ? "프로빈스 PNG 불러옴" : "PNG 없음/크기불일치"); RefreshMenuUI(); });
 
+        AddSectionHeader(panel.transform, "파일 · 히스토리");
         var fileRow = AddRow(panel.transform, "FileRow");
         AddButton(fileRow, "↶", () => { Grid.Undo(); RefreshMenuUI(); });
         AddButton(fileRow, "↷", () => { Grid.Redo(); RefreshMenuUI(); });
         AddButton(fileRow, "저장", () => { Grid.SaveToFile(SavePath); SetStatus("저장됨"); });
         AddButton(fileRow, "불러오기", () => { SetStatus(Grid.LoadFromFile(SavePath) ? "불러옴" : "저장 파일 없음"); RefreshMenuUI(); });
 
+        AddSectionHeader(panel.transform, "새 지도");
         var mapRow = AddRow(panel.transform, "NewMapRow");
         widthInput = AddInput(mapRow, widthText); heightInput = AddInput(mapRow, heightText);
         AddButton(mapRow, "새 맵 생성", CreateMapFromInputs);
@@ -593,7 +602,7 @@ public class HexMapEditor : MonoBehaviour
     void RefreshMenuUI(bool rebuildList = true)
     {
         if (Grid == null || uiRoot == null) return;
-        if (titleText != null) titleText.text = $"Pax Map Command  {Grid.CurrentWidth}×{Grid.CurrentHeight}";
+        if (titleText != null) titleText.text = $"PAX IMPERIUM  {Grid.CurrentWidth}×{Grid.CurrentHeight}";
         if (brushLabel != null) brushLabel.text = $"브러시 {brushSize}  · 0=한 칸";
         if (brushSlider != null && (int)brushSlider.value != brushSize) brushSlider.value = brushSize;
         if (provinceActions != null) provinceActions.SetActive(paintMode == HexGrid.EditChannel.Province);
@@ -641,14 +650,122 @@ public class HexMapEditor : MonoBehaviour
         if (component != null) return component;
         return go.AddComponent<T>();
     }
+
     static GameObject CreateUIObject(string name, Transform parent) { var go = new GameObject(name, typeof(RectTransform)); go.transform.SetParent(parent, false); return go; }
     static void Stretch(RectTransform rt) { rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one; rt.offsetMin = Vector2.zero; rt.offsetMax = Vector2.zero; }
-    static void SetLayout(GameObject go, float minW, float minH) { var le = go.GetComponent<LayoutElement>() ?? go.AddComponent<LayoutElement>(); le.minWidth = minW; le.minHeight = minH; }
-    Text AddText(Transform parent, string name, string value, int size, FontStyle style, Color? color = null) { var go = CreateUIObject(name, parent); var t = go.AddComponent<Text>(); t.text = value; t.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf"); t.fontSize = size; t.fontStyle = style; t.color = color ?? Color.white; SetLayout(go, 0, size + 8); return t; }
-    Transform AddRow(Transform parent, string name) { var go = CreateUIObject(name, parent); var lg = go.AddComponent<HorizontalLayoutGroup>(); lg.spacing = 6; lg.childForceExpandWidth = true; lg.childControlWidth = true; SetLayout(go, 0, 34); return go.transform; }
-    Button AddButton(Transform parent, string label, UnityEngine.Events.UnityAction action, Color? tint = null) { var go = CreateUIObject("Button_" + label, parent); var img = go.AddComponent<Image>(); img.color = tint ?? new Color(0.18f, 0.22f, 0.27f, 0.96f); var btn = go.AddComponent<Button>(); btn.targetGraphic = img; btn.onClick.AddListener(action); var txt = AddText(go.transform, "Text", label, 14, FontStyle.Bold); txt.alignment = TextAnchor.MiddleCenter; Stretch(txt.rectTransform); SetLayout(go, 0, 34); return btn; }
-    InputField AddInput(Transform parent, string value) { var go = CreateUIObject("Input", parent); go.AddComponent<Image>().color = new Color(0.08f, 0.09f, 0.1f, 1f); var input = go.AddComponent<InputField>(); var text = AddText(go.transform, "Text", value, 14, FontStyle.Normal); text.alignment = TextAnchor.MiddleCenter; Stretch(text.rectTransform); input.textComponent = text; input.text = value; SetLayout(go, 70, 34); return input; }
-    void BuildSliderVisuals(Slider slider) { var bg = slider.gameObject.AddComponent<Image>(); bg.color = new Color(0.12f, 0.14f, 0.16f, 1f); var fill = CreateUIObject("Fill", slider.transform).AddComponent<Image>(); fill.color = new Color(0.68f, 0.50f, 0.26f, 1f); Stretch(fill.rectTransform); slider.fillRect = fill.rectTransform; var handle = CreateUIObject("Handle", slider.transform).AddComponent<Image>(); handle.color = new Color(0.95f, 0.84f, 0.58f, 1f); handle.rectTransform.sizeDelta = new Vector2(18, 28); slider.handleRect = handle.rectTransform; }
+    static void SetLayout(GameObject go, float minW, float minH) { var le = EnsureComponent<LayoutElement>(go); le.minWidth = minW; le.minHeight = minH; }
+
+    void AddPanelChrome(Transform parent)
+    {
+        var top = CreateUIObject("GoldHeaderRule", parent);
+        top.transform.SetAsFirstSibling();
+        top.AddComponent<Image>().color = new Color(0.86f, 0.62f, 0.25f, 0.92f);
+        SetLayout(top, 0, 4);
+    }
+
+    void AddDivider(Transform parent, string name, Color color)
+    {
+        var go = CreateUIObject(name, parent);
+        go.AddComponent<Image>().color = color;
+        SetLayout(go, 0, 2);
+    }
+
+    void AddSectionHeader(Transform parent, string label)
+    {
+        var row = CreateUIObject("Section_" + label, parent);
+        var bg = row.AddComponent<Image>();
+        bg.color = new Color(0.11f, 0.13f, 0.16f, 0.92f);
+        var text = AddText(row.transform, "Text", "◆ " + label.ToUpperInvariant(), 13, FontStyle.Bold, new Color(0.92f, 0.78f, 0.48f));
+        text.alignment = TextAnchor.MiddleLeft;
+        text.rectTransform.offsetMin = new Vector2(12f, 0f);
+        text.rectTransform.offsetMax = new Vector2(-8f, 0f);
+        Stretch(text.rectTransform);
+        SetLayout(row, 0, 28);
+    }
+
+    Font RuntimeFont()
+    {
+        return Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf")
+            ?? Resources.GetBuiltinResource<Font>("Arial.ttf");
+    }
+
+    Text AddText(Transform parent, string name, string value, int size, FontStyle style, Color? color = null)
+    {
+        var go = CreateUIObject(name, parent);
+        var t = go.AddComponent<Text>();
+        t.text = value;
+        t.font = RuntimeFont();
+        t.fontSize = size;
+        t.fontStyle = style;
+        t.color = color ?? Color.white;
+        t.raycastTarget = false;
+        SetLayout(go, 0, size + 10);
+        return t;
+    }
+
+    Transform AddRow(Transform parent, string name)
+    {
+        var go = CreateUIObject(name, parent);
+        var lg = go.AddComponent<HorizontalLayoutGroup>();
+        lg.spacing = 8; lg.childForceExpandWidth = true; lg.childControlWidth = true;
+        SetLayout(go, 0, 38);
+        return go.transform;
+    }
+
+    Button AddButton(Transform parent, string label, UnityEngine.Events.UnityAction action, Color? tint = null)
+    {
+        var go = CreateUIObject("Button_" + label, parent);
+        var img = go.AddComponent<Image>();
+        Color baseColor = tint.HasValue ? Color.Lerp(new Color(0.08f, 0.09f, 0.11f, 1f), tint.Value, 0.68f) : new Color(0.16f, 0.19f, 0.23f, 0.98f);
+        img.color = baseColor;
+        var btn = go.AddComponent<Button>();
+        btn.targetGraphic = img;
+        btn.transition = Selectable.Transition.ColorTint;
+        btn.colors = new ColorBlock
+        {
+            normalColor = baseColor,
+            highlightedColor = Color.Lerp(baseColor, new Color(0.95f, 0.78f, 0.42f, 1f), 0.18f),
+            pressedColor = Color.Lerp(baseColor, Color.black, 0.22f),
+            selectedColor = Color.Lerp(baseColor, new Color(0.95f, 0.78f, 0.42f, 1f), 0.28f),
+            disabledColor = new Color(0.1f, 0.1f, 0.1f, 0.55f),
+            colorMultiplier = 1f,
+            fadeDuration = 0.08f
+        };
+        btn.onClick.AddListener(action);
+        var txt = AddText(go.transform, "Text", label, 14, FontStyle.Bold, Color.white);
+        txt.alignment = TextAnchor.MiddleCenter;
+        Stretch(txt.rectTransform);
+        SetLayout(go, 0, 38);
+        return btn;
+    }
+
+    InputField AddInput(Transform parent, string value)
+    {
+        var go = CreateUIObject("Input", parent);
+        go.AddComponent<Image>().color = new Color(0.025f, 0.03f, 0.038f, 1f);
+        var input = go.AddComponent<InputField>();
+        var text = AddText(go.transform, "Text", value, 15, FontStyle.Bold, new Color(0.92f, 0.94f, 0.96f));
+        text.alignment = TextAnchor.MiddleCenter;
+        Stretch(text.rectTransform);
+        input.textComponent = text;
+        input.text = value;
+        SetLayout(go, 78, 38);
+        return input;
+    }
+
+    void BuildSliderVisuals(Slider slider)
+    {
+        var bg = slider.gameObject.AddComponent<Image>();
+        bg.color = new Color(0.035f, 0.043f, 0.055f, 1f);
+        var fill = CreateUIObject("Fill", slider.transform).AddComponent<Image>();
+        fill.color = new Color(0.86f, 0.62f, 0.25f, 1f);
+        Stretch(fill.rectTransform);
+        slider.fillRect = fill.rectTransform;
+        var handle = CreateUIObject("Handle", slider.transform).AddComponent<Image>();
+        handle.color = new Color(1f, 0.88f, 0.58f, 1f);
+        handle.rectTransform.sizeDelta = new Vector2(20, 30);
+        slider.handleRect = handle.rectTransform;
+    }
 
     // ───────────────────────── UI ─────────────────────────
 
