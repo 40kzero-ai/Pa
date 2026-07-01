@@ -22,6 +22,10 @@ public class HexGrid : MonoBehaviour
     public HexCameraController CameraController;
     public bool AutoFrameCamera = true;
 
+    [Header("부팅")]
+    [SerializeField] bool buildOnStart = true;
+
+
     [Header("프로빈스 표시")]
     [Range(0f, 1f)] public float ProvinceTint = 0.75f;
     public bool ShowBorders = true;
@@ -49,6 +53,8 @@ public class HexGrid : MonoBehaviour
     public int CurrentWidth => data != null ? data.grid.width : 0;
     public int CurrentHeight => data != null ? data.grid.height : 0;
     public int ProvinceEditVersion { get; private set; }
+    public bool IsBuilding { get; private set; }
+    public event System.Action BuildCompleted;
     public struct ProvinceEdge { public Vector3 A; public Vector3 B; }
 
     // ── 되돌리기(지형/프로빈스 페인팅 단위) ──
@@ -65,6 +71,7 @@ public class HexGrid : MonoBehaviour
 
     void Start()
     {
+        if (!buildOnStart) return;
         if (CameraController == null) CameraController = FindFirstObjectByType<HexCameraController>();
         if (GeometryJson == null) { Debug.LogError("HexGrid: GeometryJson이 비어 있습니다."); return; }
         Build(HexGeometryLoader.Load(GeometryJson.text));
@@ -98,6 +105,7 @@ public class HexGrid : MonoBehaviour
         var sw = System.Diagnostics.Stopwatch.StartNew();
 
         building = true;
+        IsBuilding = true;
         data = newData;
         oceanIndexCache = -2; // 지형 종류가 바뀔 수 있으니 ocean 인덱스 캐시 무효화
         Debug.Log($"맵 빌드 시작: {data.grid.width}x{data.grid.height} / 지형 {data.terrainTypes?.Length ?? 0}종 / 프로빈스 {data.provinces?.Length ?? 0}개");
@@ -131,6 +139,8 @@ public class HexGrid : MonoBehaviour
         ProvinceEditVersion++;
 
         building = false;
+        IsBuilding = false;
+        BuildCompleted?.Invoke();
 
         total.Stop();
         int w = data.grid.width, h = data.grid.height;
@@ -401,6 +411,12 @@ public class HexGrid : MonoBehaviour
         return cells[nx + nz * w];
     }
 
+    public GeometryData ExportData()
+    {
+        return data;
+    }
+
+    [System.Obsolete("Use SaveManager.SaveGeometry with ExportData instead.")]
     public void SaveToFile(string path)
     {
         string json = JsonUtility.ToJson(data, true);
@@ -408,6 +424,7 @@ public class HexGrid : MonoBehaviour
         Debug.Log($"맵 저장 완료: {path}");
     }
 
+    [System.Obsolete("Use SaveManager.LoadGeometry and Build instead.")]
     public bool LoadFromFile(string path)
     {
         if (!System.IO.File.Exists(path)) { Debug.LogWarning($"불러올 파일이 없습니다: {path}"); return false; }

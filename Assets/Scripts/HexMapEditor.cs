@@ -88,8 +88,7 @@ public class HexMapEditor : MonoBehaviour
     int lastBrush = -1;
 
     string status = "";
-    string SavePath => System.IO.Path.Combine(Application.persistentDataPath, "edited_geometry.json");
-    string ProvincePngPath => System.IO.Path.Combine(Application.persistentDataPath, "provinces.png");
+    const string DefaultSaveSlotId = SavePaths.DefaultSlotId;
 
     static readonly Key[] DigitKeys =
     {
@@ -208,12 +207,12 @@ public class HexMapEditor : MonoBehaviour
             {
                 if (shift)
                 {
-                    Grid.SaveProvincePNG(ProvincePngPath);
+                    SaveProvincePng();
                     status = "프로빈스 PNG 저장됨 (Ctrl+Shift+S)";
                 }
                 else
                 {
-                    Grid.SaveToFile(SavePath);
+                    SaveGeometry();
                     status = "저장됨 (Ctrl+S)";
                 }
             }
@@ -586,9 +585,9 @@ public class HexMapEditor : MonoBehaviour
 
             GUILayout.BeginHorizontal();
             if (GUILayout.Button("PNG 저장", GUILayout.Height(22)))
-            { Grid.SaveProvincePNG(ProvincePngPath); status = "프로빈스 PNG 저장됨"; }
+            { SaveProvincePng(); status = "프로빈스 PNG 저장됨"; }
             if (GUILayout.Button("PNG 불러오기", GUILayout.Height(22)))
-            { status = Grid.LoadProvincePNG(ProvincePngPath) ? "프로빈스 PNG 불러옴" : "PNG 없음/크기불일치"; }
+            { status = LoadProvincePng() ? "프로빈스 PNG 불러옴" : "PNG 없음/크기불일치"; }
             GUILayout.EndHorizontal();
         }
 
@@ -605,8 +604,8 @@ public class HexMapEditor : MonoBehaviour
             GUILayout.EndHorizontal();
 
             GUILayout.BeginHorizontal();
-            if (GUILayout.Button("저장", GUILayout.Height(24))) { Grid.SaveToFile(SavePath); status = "저장됨"; }
-            if (GUILayout.Button("불러오기", GUILayout.Height(24))) status = Grid.LoadFromFile(SavePath) ? "불러옴" : "저장 파일 없음";
+            if (GUILayout.Button("저장", GUILayout.Height(24))) { SaveGeometry(); status = "저장됨"; }
+            if (GUILayout.Button("불러오기", GUILayout.Height(24))) status = LoadGeometry() ? "불러옴" : "저장 파일 없음";
             GUILayout.EndHorizontal();
 
             GUILayout.BeginHorizontal();
@@ -632,6 +631,41 @@ public class HexMapEditor : MonoBehaviour
         GUILayout.EndScrollView();
         GUILayout.EndArea();
         GUI.matrix = prev;
+    }
+
+    SaveManager SaveManagerInstance => SaveManager.GetOrCreate();
+
+    void SaveGeometry()
+    {
+        if (Grid == null) return;
+        SaveManagerInstance.SaveGeometry(DefaultSaveSlotId, Grid.ExportData());
+    }
+
+    bool LoadGeometry()
+    {
+        if (Grid == null || !SaveManagerInstance.HasSave(DefaultSaveSlotId)) return false;
+        try
+        {
+            Grid.Build(SaveManagerInstance.LoadGeometry(DefaultSaveSlotId));
+            return true;
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogError($"저장 파일 불러오기 실패: {e.Message}");
+            return false;
+        }
+    }
+
+    void SaveProvincePng()
+    {
+        if (Grid == null) return;
+        Grid.SaveProvincePNG(SaveManagerInstance.GetProvincePngPath(DefaultSaveSlotId));
+    }
+
+    bool LoadProvincePng()
+    {
+        if (Grid == null) return false;
+        return Grid.LoadProvincePNG(SaveManagerInstance.GetProvincePngPath(DefaultSaveSlotId));
     }
 
     static Color ParseColor(string hex)
