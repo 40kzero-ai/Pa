@@ -510,7 +510,6 @@ public class HexMapEditor : MonoBehaviour
 
         var canvasGO = GameObject.Find("VictoriaStyleMainMenuCanvas")
             ?? new GameObject("VictoriaStyleMainMenuCanvas", typeof(RectTransform));
-        canvasGO.transform.SetParent(transform, false);
         var canvas = EnsureComponent<Canvas>(canvasGO);
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
         canvas.sortingOrder = 100;
@@ -524,7 +523,7 @@ public class HexMapEditor : MonoBehaviour
         var panel = panelTransform != null ? panelTransform.gameObject : CreateUIObject("MainMenuPrefabRoot", canvasGO.transform);
         panel.transform.SetParent(canvasGO.transform, false);
         foreach (Transform child in panel.transform) Destroy(child.gameObject);
-        uiRoot = panel.GetComponent<RectTransform>() ?? panel.AddComponent<RectTransform>();
+        uiRoot = EnsureComponent<RectTransform>(panel);
         uiRoot.anchorMin = new Vector2(0f, 0f);
         uiRoot.anchorMax = new Vector2(0f, 1f);
         uiRoot.pivot = new Vector2(0f, 0.5f);
@@ -636,7 +635,12 @@ public class HexMapEditor : MonoBehaviour
 
     void SetStatus(string message) { status = message; if (statusText != null) statusText.text = message; }
 
-    static T EnsureComponent<T>(GameObject go) where T : Component { return go.GetComponent<T>() ?? go.AddComponent<T>(); }
+    static T EnsureComponent<T>(GameObject go) where T : Component
+    {
+        T component = go.GetComponent<T>();
+        if (component != null) return component;
+        return go.AddComponent<T>();
+    }
     static GameObject CreateUIObject(string name, Transform parent) { var go = new GameObject(name, typeof(RectTransform)); go.transform.SetParent(parent, false); return go; }
     static void Stretch(RectTransform rt) { rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one; rt.offsetMin = Vector2.zero; rt.offsetMax = Vector2.zero; }
     static void SetLayout(GameObject go, float minW, float minH) { var le = go.GetComponent<LayoutElement>() ?? go.AddComponent<LayoutElement>(); le.minWidth = minW; le.minHeight = minH; }
