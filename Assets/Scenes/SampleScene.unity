@@ -492,7 +492,7 @@ MonoBehaviour:
   defaultGeometryJson: {fileID: 4900000, guid: 3235a8baef1446c45aabcb2157b66e1c, type: 3}
   slotId: slot_0
   showMainMenuOnStart: 1
-  enableEditorAfterLoad: 1
+  enableEditorAfterLoad: 0
 --- !u!4 &596827398
 Transform:
   m_ObjectHideFlags: 0
