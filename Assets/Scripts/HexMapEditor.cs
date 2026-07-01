@@ -9,6 +9,7 @@ using UnityEngine.InputSystem; // 새 Input System
 /// - 숫자키 1~: 지형/프로빈스 선택 (모드에 따라 1번부터 매핑)
 /// - 프로빈스 모드에서 Alt+클릭: 맵에서 클릭한 셀의 프로빈스를 자동으로 찾아 선택(스포이드)
 /// - Ctrl/Cmd+S: 저장
+/// - Ctrl/Cmd+Shift+S: 프로빈스 PNG 저장
 /// - 마우스를 올리면 브러시가 칠할 영역을 반투명으로 미리보기
 /// - 좌측 패널: 지형 견본, 브러시 크기, UI 크기(±), 새 맵 생성(W×H), 저장
 /// (카메라 줌/이동은 HexCameraController가 담당: 휠 줌, 우드래그 팬)
@@ -189,7 +190,7 @@ public class HexMapEditor : MonoBehaviour
                 }
             }
 
-            // Ctrl/Cmd + Z = 되돌리기, +Shift 또는 Ctrl+Y = 다시, Ctrl/Cmd + S = 저장
+            // Ctrl/Cmd + Z = 되돌리기, +Shift 또는 Ctrl+Y = 다시, Ctrl/Cmd + S = 저장, Ctrl/Cmd + Shift + S = PNG 저장
             bool mod = keyboard.leftCtrlKey.isPressed || keyboard.rightCtrlKey.isPressed
                      || keyboard.leftMetaKey.isPressed || keyboard.rightMetaKey.isPressed;
             bool shift = keyboard.leftShiftKey.isPressed || keyboard.rightShiftKey.isPressed;
@@ -205,8 +206,16 @@ public class HexMapEditor : MonoBehaviour
             }
             else if (mod && keyboard.sKey.wasPressedThisFrame)
             {
-                Grid.SaveToFile(SavePath);
-                status = "저장됨 (Ctrl+S)";
+                if (shift)
+                {
+                    Grid.SaveProvincePNG(ProvincePngPath);
+                    status = "프로빈스 PNG 저장됨 (Ctrl+Shift+S)";
+                }
+                else
+                {
+                    Grid.SaveToFile(SavePath);
+                    status = "저장됨 (Ctrl+S)";
+                }
             }
         }
 
