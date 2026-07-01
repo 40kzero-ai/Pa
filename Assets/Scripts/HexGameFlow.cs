@@ -8,12 +8,12 @@ using UnityEngine.UI;
 
 /// <summary>
 /// Runtime shell for the grand-strategy prototype: boot loading, main menu,
-/// settings, game HUD, and editor-mode entry.
+/// scenario selection, settings, game HUD, and editor-mode entry.
 /// </summary>
 [DisallowMultipleComponent]
 public class HexGameFlow : MonoBehaviour
 {
-    public enum FlowSceneRole { Auto, Boot, Loading, MainMenu, Game, Editor }
+    public enum FlowSceneRole { Auto, Boot, Loading, MainMenu, ScenarioSelect, Game, Editor }
 
     public HexMapEditor Editor;
     public HexGrid Grid;
@@ -21,6 +21,7 @@ public class HexGameFlow : MonoBehaviour
     public string BootSceneName = "BootScene";
     public string LoadingSceneName = "LoadingScene";
     public string MainMenuSceneName = "MainMenuScene";
+    public string ScenarioSelectSceneName = "ScenarioSelectScene";
     public string GameSceneName = "GameScene";
     public string EditorSceneName = "EditorScene";
     public float LoadingSeconds = 0.85f;
@@ -35,6 +36,46 @@ public class HexGameFlow : MonoBehaviour
     public Color TextColor = new Color(0.92f, 0.95f, 0.96f, 1f);
     public Color MutedTextColor = new Color(0.58f, 0.65f, 0.69f, 1f);
 
+    struct ScenarioInfo
+    {
+        public string Id;
+        public string Title;
+        public string Period;
+        public string Description;
+        public string MapNote;
+
+        public ScenarioInfo(string id, string title, string period, string description, string mapNote)
+        {
+            Id = id;
+            Title = title;
+            Period = period;
+            Description = description;
+            MapNote = mapNote;
+        }
+    }
+
+    static readonly ScenarioInfo[] ScenarioCatalog =
+    {
+        new ScenarioInfo(
+            "balance_1836",
+            "1836년의 균형",
+            "1836년",
+            "초기 테스트용 기본 시나리오입니다. 안정적인 지도와 기본 자원 상태에서 시작합니다.",
+            "기본 월드맵 프리팹을 사용합니다."),
+        new ScenarioInfo(
+            "frontier_1850",
+            "개척 시대 샌드박스",
+            "1850년",
+            "확장과 개척을 실험하기 위한 샌드박스 시나리오입니다. 맵 제작 기능 검증에 적합합니다.",
+            "지형 편집과 세력 배치 테스트에 적합합니다."),
+        new ScenarioInfo(
+            "fragmented_realms",
+            "분열된 영지들",
+            "가상 시대",
+            "여러 소규모 세력이 분산된 가상 시나리오입니다. 모드 제작의 기본 구조를 점검합니다.",
+            "프리팹 기반 오브젝트 배치 규칙을 검증합니다.")
+    };
+
     GameObject menuRoot;
     GameObject hudRoot;
     GameObject loadingRoot;
@@ -43,12 +84,13 @@ public class HexGameFlow : MonoBehaviour
     Slider loadingSlider;
     Text fullscreenButtonText;
     Text keyPanButtonText;
-    Coroutine transitionRoutine;
 
     const string TargetSceneKey = "HexFlow.TargetScene";
     const string LoadingTitleKey = "HexFlow.LoadingTitle";
     const string LoadingDetailKey = "HexFlow.LoadingDetail";
     const string NextActionKey = "HexFlow.NextAction";
+    const string SelectedScenarioKey = "HexFlow.SelectedScenario";
+    const string SelectedScenarioTitleKey = "HexFlow.SelectedScenarioTitle";
     const string ContinueAction = "continue";
 
     void Awake()
@@ -70,13 +112,16 @@ public class HexGameFlow : MonoBehaviour
         switch (ResolveSceneRole())
         {
             case FlowSceneRole.Boot:
-                LoadThroughLoading(MainMenuSceneName, "부팅 중", "핵심 시스템과 메뉴 씬을 준비하고 있습니다.");
+                LoadThroughLoading(MainMenuSceneName, "시작 중", "시스템과 메인 메뉴 씬을 준비하고 있습니다.");
                 break;
             case FlowSceneRole.Loading:
                 StartCoroutine(LoadingSceneRoutine());
                 break;
             case FlowSceneRole.MainMenu:
                 ShowMainMenu();
+                break;
+            case FlowSceneRole.ScenarioSelect:
+                ShowScenarioSelect();
                 break;
             case FlowSceneRole.Editor:
                 EnterEditorMode();
@@ -102,6 +147,7 @@ public class HexGameFlow : MonoBehaviour
         if (scene == BootSceneName) return FlowSceneRole.Boot;
         if (scene == LoadingSceneName) return FlowSceneRole.Loading;
         if (scene == MainMenuSceneName) return FlowSceneRole.MainMenu;
+        if (scene == ScenarioSelectSceneName) return FlowSceneRole.ScenarioSelect;
         if (scene == EditorSceneName) return FlowSceneRole.Editor;
         return FlowSceneRole.Game;
     }
@@ -122,6 +168,7 @@ public class HexGameFlow : MonoBehaviour
 
         // Development fallback if the new scenes have not been added to Build Settings yet.
         if (targetScene == MainMenuSceneName) ShowMainMenu();
+        else if (targetScene == ScenarioSelectSceneName) ShowScenarioSelect();
         else if (targetScene == EditorSceneName) EnterEditorMode();
         else EnterGameMode();
     }
@@ -174,7 +221,7 @@ public class HexGameFlow : MonoBehaviour
         panelRect.anchorMax = new Vector2(0f, 0.5f);
         panelRect.pivot = new Vector2(0f, 0.5f);
         panelRect.anchoredPosition = new Vector2(96f, 0f);
-        panelRect.sizeDelta = new Vector2(520f, 620f);
+        panelRect.sizeDelta = new Vector2(540f, 640f);
         panel.GetComponent<Image>().color = PanelColor;
 
         VerticalLayoutGroup layout = panel.GetComponent<VerticalLayoutGroup>();
@@ -187,27 +234,137 @@ public class HexGameFlow : MonoBehaviour
 
         Text title = CreateLabel(panel.transform, "대전략 샌드박스", 34, FontStyle.Bold, TextAnchor.MiddleLeft);
         title.GetComponent<LayoutElement>().preferredHeight = 46f;
-        Text subtitle = CreateLabel(panel.transform, "프로빈스 기반 지도 제작과 시나리오 테스트", 15, FontStyle.Normal, TextAnchor.MiddleLeft);
+        Text subtitle = CreateLabel(panel.transform, "프리팹 기반 지도와 시나리오 제작을 위한 기초 플레이 환경", 15, FontStyle.Normal, TextAnchor.MiddleLeft);
         subtitle.color = MutedTextColor;
-        subtitle.GetComponent<LayoutElement>().preferredHeight = 34f;
+        subtitle.GetComponent<LayoutElement>().preferredHeight = 40f;
 
         CreateSpacer(panel.transform, 18f);
         CreateButton(panel.transform, "새로운 게임", AccentColor,
-            () => LoadThroughLoading(GameSceneName, "새로운 게임", "기본 시나리오를 준비하고 있습니다."), 48f);
+            () => LoadThroughLoading(ScenarioSelectSceneName, "시나리오 선택", "플레이할 시작 조건을 준비하고 있습니다."), 48f);
 
         Button continueButton = CreateButton(panel.transform, "이어하기", SurfaceColor,
             () => LoadThroughLoading(GameSceneName, "이어하기", "저장된 지도를 불러오고 있습니다.", ContinueAction), 48f);
         continueButton.interactable = HasSaveFile();
 
-        CreateButton(panel.transform, "에디터 모드로 진입", SurfaceColor,
+        CreateButton(panel.transform, "에디터 모드", SurfaceColor,
             () => LoadThroughLoading(EditorSceneName, "에디터 모드", "지도 제작 도구를 준비하고 있습니다."), 48f);
         CreateButton(panel.transform, "설정", SurfaceColor, ShowSettings, 48f);
         CreateButton(panel.transform, "종료", new Color(0.30f, 0.16f, 0.15f, 1f), QuitGame, 44f);
 
         CreateSpacer(panel.transform, 18f);
-        Text footer = CreateLabel(panel.transform, "현재 단계: 런타임 메뉴와 에디터 모드 분리", 13, FontStyle.Normal, TextAnchor.LowerLeft);
+        Text footer = CreateLabel(panel.transform, "현재 단계: 씬 전환, 메인 메뉴, 시나리오 선택, 에디터 모드", 13, FontStyle.Normal, TextAnchor.LowerLeft);
         footer.color = MutedTextColor;
         footer.GetComponent<LayoutElement>().flexibleHeight = 1f;
+    }
+
+    void ShowScenarioSelect()
+    {
+        if (Editor != null) Editor.ExitEditorMode();
+        DestroySafe(hudRoot);
+        DestroySafe(menuRoot);
+
+        menuRoot = CreateCanvasRoot("시나리오 선택", 85);
+        menuRoot.AddComponent<Image>().color = BackgroundColor;
+
+        GameObject panel = CreateCenteredPanel(menuRoot.transform, "시나리오 선택 패널", new Vector2(860f, 700f));
+        CreateLabel(panel.transform, "시나리오 선택", 32, FontStyle.Bold, TextAnchor.MiddleLeft).GetComponent<LayoutElement>().preferredHeight = 44f;
+        Text note = CreateLabel(panel.transform, "새 게임에서 사용할 시작 조건을 선택하세요.", 15, FontStyle.Normal, TextAnchor.MiddleLeft);
+        note.color = MutedTextColor;
+        note.GetComponent<LayoutElement>().preferredHeight = 32f;
+
+        GameObject list = CreateObject("시나리오 목록", panel.transform, typeof(VerticalLayoutGroup), typeof(LayoutElement));
+        LayoutElement listLayout = list.GetComponent<LayoutElement>();
+        listLayout.flexibleWidth = 1f;
+        listLayout.flexibleHeight = 1f;
+
+        VerticalLayoutGroup listGroup = list.GetComponent<VerticalLayoutGroup>();
+        listGroup.spacing = 12f;
+        listGroup.childControlWidth = true;
+        listGroup.childControlHeight = true;
+        listGroup.childForceExpandWidth = true;
+        listGroup.childForceExpandHeight = false;
+
+        foreach (ScenarioInfo scenario in ScenarioCatalog)
+        {
+            ScenarioInfo current = scenario;
+            CreateScenarioButton(list.transform, current);
+        }
+
+        GameObject bottomRow = CreateObject("하단 버튼", panel.transform, typeof(HorizontalLayoutGroup), typeof(LayoutElement));
+        bottomRow.GetComponent<LayoutElement>().preferredHeight = 48f;
+        HorizontalLayoutGroup rowLayout = bottomRow.GetComponent<HorizontalLayoutGroup>();
+        rowLayout.spacing = 10f;
+        rowLayout.childControlWidth = true;
+        rowLayout.childControlHeight = true;
+        rowLayout.childForceExpandWidth = true;
+        rowLayout.childForceExpandHeight = true;
+
+        CreateButton(bottomRow.transform, "뒤로", SurfaceColor,
+            () => LoadThroughLoading(MainMenuSceneName, "메인 메뉴", "메뉴 화면을 준비하고 있습니다."), 160f, 46f);
+        CreateButton(bottomRow.transform, "에디터 모드", SurfaceColor,
+            () => LoadThroughLoading(EditorSceneName, "에디터 모드", "지도 제작 도구를 준비하고 있습니다."), 180f, 46f);
+    }
+
+    Button CreateScenarioButton(Transform parent, ScenarioInfo scenario)
+    {
+        GameObject go = CreateObject(scenario.Title + " 버튼", parent, typeof(Image), typeof(Button), typeof(VerticalLayoutGroup), typeof(LayoutElement));
+        Image image = go.GetComponent<Image>();
+        image.color = SurfaceColor;
+
+        Button button = go.GetComponent<Button>();
+        button.targetGraphic = image;
+        button.onClick.AddListener(() => SelectScenario(scenario));
+
+        ColorBlock colors = button.colors;
+        colors.normalColor = SurfaceColor;
+        colors.highlightedColor = Color.Lerp(SurfaceColor, AccentColor, 0.35f);
+        colors.pressedColor = Color.Lerp(SurfaceColor, Color.black, 0.12f);
+        colors.selectedColor = colors.highlightedColor;
+        button.colors = colors;
+
+        LayoutElement layout = go.GetComponent<LayoutElement>();
+        layout.preferredHeight = 126f;
+        layout.flexibleWidth = 1f;
+
+        VerticalLayoutGroup group = go.GetComponent<VerticalLayoutGroup>();
+        group.padding = new RectOffset(18, 18, 12, 12);
+        group.spacing = 4f;
+        group.childControlWidth = true;
+        group.childControlHeight = true;
+        group.childForceExpandWidth = true;
+        group.childForceExpandHeight = false;
+
+        GameObject header = CreateObject("시나리오 머리글", go.transform, typeof(HorizontalLayoutGroup), typeof(LayoutElement));
+        header.GetComponent<LayoutElement>().preferredHeight = 28f;
+        HorizontalLayoutGroup headerGroup = header.GetComponent<HorizontalLayoutGroup>();
+        headerGroup.spacing = 10f;
+        headerGroup.childControlWidth = true;
+        headerGroup.childControlHeight = true;
+        headerGroup.childForceExpandWidth = false;
+
+        Text title = CreateLabel(header.transform, scenario.Title, 18, FontStyle.Bold, TextAnchor.MiddleLeft);
+        title.GetComponent<LayoutElement>().flexibleWidth = 1f;
+        Text period = CreateLabel(header.transform, scenario.Period, 13, FontStyle.Bold, TextAnchor.MiddleRight);
+        period.color = AccentColor;
+        period.GetComponent<LayoutElement>().preferredWidth = 140f;
+
+        Text description = CreateLabel(go.transform, scenario.Description, 14, FontStyle.Normal, TextAnchor.UpperLeft);
+        description.color = MutedTextColor;
+        description.GetComponent<LayoutElement>().preferredHeight = 44f;
+
+        Text mapNote = CreateLabel(go.transform, scenario.MapNote, 13, FontStyle.Normal, TextAnchor.UpperLeft);
+        mapNote.color = Color.Lerp(MutedTextColor, TextColor, 0.25f);
+        mapNote.GetComponent<LayoutElement>().preferredHeight = 24f;
+
+        return button;
+    }
+
+    void SelectScenario(ScenarioInfo scenario)
+    {
+        PlayerPrefs.SetString(SelectedScenarioKey, scenario.Id);
+        PlayerPrefs.SetString(SelectedScenarioTitleKey, scenario.Title);
+        PlayerPrefs.Save();
+        LoadThroughLoading(GameSceneName, scenario.Title, "선택한 시나리오의 지도를 불러오고 있습니다.");
     }
 
     void ShowSettings()
@@ -236,11 +393,17 @@ public class HexGameFlow : MonoBehaviour
         if (Editor != null) Editor.ExitEditorMode();
         DestroySafe(menuRoot);
 
-        if (PlayerPrefs.GetString(NextActionKey, "") == ContinueAction && Editor != null && Grid != null && File.Exists(Editor.SavePath))
+        string nextAction = PlayerPrefs.GetString(NextActionKey, "");
+        string status = PlayerPrefs.GetString(SelectedScenarioTitleKey, ScenarioCatalog[0].Title) + " 시작됨";
+
+        if (nextAction == ContinueAction && Editor != null && Grid != null && File.Exists(Editor.SavePath))
+        {
             Grid.LoadFromFile(Editor.SavePath);
+            status = "저장된 지도 불러옴";
+        }
 
         PlayerPrefs.DeleteKey(NextActionKey);
-        CreateGameHud("게임 모드", "시나리오 시작됨");
+        CreateGameHud("게임 모드", status);
     }
 
     void EnterEditorMode()
@@ -275,7 +438,7 @@ public class HexGameFlow : MonoBehaviour
 
         Text title = CreateLabel(top.transform, $"대전략 샌드박스 · {mode}", 16, FontStyle.Bold, TextAnchor.MiddleLeft);
         title.GetComponent<LayoutElement>().flexibleWidth = 1f;
-        CreateLabel(top.transform, "1836년 1월 1일", 14, FontStyle.Normal, TextAnchor.MiddleCenter).GetComponent<LayoutElement>().preferredWidth = 150f;
+        CreateLabel(top.transform, GetScenarioDateLabel(), 14, FontStyle.Normal, TextAnchor.MiddleCenter).GetComponent<LayoutElement>().preferredWidth = 150f;
         CreateLabel(top.transform, "국고 1,000", 14, FontStyle.Normal, TextAnchor.MiddleCenter).GetComponent<LayoutElement>().preferredWidth = 120f;
         CreateButton(top.transform, "에디터", SurfaceColor,
             () => LoadThroughLoading(EditorSceneName, "에디터 모드", "지도 제작 도구를 준비하고 있습니다."), 92f, 38f);
@@ -291,7 +454,7 @@ public class HexGameFlow : MonoBehaviour
         bottomRect.offsetMax = new Vector2(0f, 34f);
         bottom.GetComponent<Image>().color = new Color(0.045f, 0.052f, 0.06f, 0.82f);
 
-        Text statusText = CreateLabel(bottom.transform, status + " · 우클릭 드래그/휠로 지도 탐색", 13, FontStyle.Normal, TextAnchor.MiddleLeft);
+        Text statusText = CreateLabel(bottom.transform, status + " · 휠 드래그로 지도 탐색", 13, FontStyle.Normal, TextAnchor.MiddleLeft);
         statusText.color = MutedTextColor;
         Stretch(statusText.rectTransform, new Vector2(18f, 0f), new Vector2(-18f, 0f));
     }
@@ -375,6 +538,24 @@ public class HexGameFlow : MonoBehaviour
         if (Editor != null) return File.Exists(Editor.SavePath);
         string path = Path.Combine(Application.persistentDataPath, "edited_geometry.json");
         return File.Exists(path);
+    }
+
+    string GetScenarioDateLabel()
+    {
+        string scenarioId = PlayerPrefs.GetString(SelectedScenarioKey, ScenarioCatalog[0].Id);
+        ScenarioInfo scenario = FindScenario(scenarioId);
+        if (scenario.Period.Contains("년")) return scenario.Period + " 1월 1일";
+        return scenario.Period;
+    }
+
+    ScenarioInfo FindScenario(string scenarioId)
+    {
+        for (int i = 0; i < ScenarioCatalog.Length; i++)
+        {
+            if (ScenarioCatalog[i].Id == scenarioId) return ScenarioCatalog[i];
+        }
+
+        return ScenarioCatalog[0];
     }
 
     GameObject CreateCanvasRoot(string name, int sortingOrder)

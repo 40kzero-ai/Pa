@@ -128,6 +128,7 @@ MonoBehaviour:
   BootSceneName: BootScene
   LoadingSceneName: LoadingScene
   MainMenuSceneName: MainMenuScene
+  ScenarioSelectSceneName: ScenarioSelectScene
   GameSceneName: GameScene
   EditorSceneName: EditorScene
   LoadingSeconds: 0.85
